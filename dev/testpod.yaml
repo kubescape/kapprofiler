@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ig-wl-filetracer-dev-env
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ig-wl-filetracer-dev-env
+  namespace: ig-wl-filetracer-dev-env
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ig-wl-filetracer-dev-env-cluster-role
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["list", "watch", "create"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ig-wl-filetracer-dev-env-cluster-role-binding
+subjects:
+- kind: ServiceAccount
+  name: ig-wl-filetracer-dev-env
+  namespace: ig-wl-filetracer-dev-env
+roleRef:
+  kind: ClusterRole
+  name: ig-wl-filetracer-dev-env-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ig-wl-filetracer-dev-env
+  namespace: ig-wl-filetracer-dev-env
+  labels:
+    k8s-app: ig-wl-filetracer-dev-env
+spec:
+  selector:
+    matchLabels:
+      k8s-app: ig-wl-filetracer-dev-env
+  template:
+    metadata:
+      labels:
+        k8s-app: ig-wl-filetracer-dev-env
+    spec:
+      serviceAccount: ig-wl-filetracer-dev-env
+      hostPID: true
+      hostNetwork: false
+      containers:
+      - name: dev-env
+        terminationMessagePolicy: FallbackToLogsOnError
+        image: hisu/ig-node-agent:2
+        args: ["--all"]
+        imagePullPolicy: Always
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: HOST_ROOT
+            value: "/host"
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+              # fanotify requires CAP_SYS_ADMIN
+              - SYS_ADMIN
+        volumeMounts:
+        - name: host
+          mountPath: /host
+        - name: run
+          mountPath: /run
+        - name: modules
+          mountPath: /lib/modules
+        - name: debugfs
+          mountPath: /sys/kernel/debug
+        - name: cgroup
+          mountPath: /sys/fs/cgroup
+        - name: bpffs
+          mountPath: /sys/fs/bpf
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+      volumes:
+      - name: host
+        hostPath:
+          path: /
+      - name: run
+        hostPath:
+          path: /run
+      - name: cgroup
+        hostPath:
+          path: /sys/fs/cgroup
+      - name: modules
+        hostPath:
+          path: /lib/modules
+      - name: bpffs
+        hostPath:
+          path: /sys/fs/bpf
+      - name: debugfs
+        hostPath:
+          path: /sys/kernel/debug

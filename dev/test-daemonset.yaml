@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: test-nginx
+  namespace: ig-wl-filetracer-dev-env
+  labels:
+    k8s-app: test-nginx
+    ig-trace: file-access
+spec:
+  selector:
+    matchLabels:
+      k8s-app: test-nginx
+      ig-trace: file-access
+  template:
+    metadata:
+      labels:
+        k8s-app: test-nginx
+        ig-trace: file-access
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        imagePullPolicy: Always
+      
