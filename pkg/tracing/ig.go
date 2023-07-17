@@ -40,6 +40,7 @@ func execEventCallback(event *tracerexectype.Event) {
 				PathName:    event.Args[0],
 				Args:        event.Args[1:],
 				Env:         []string{},
+				Timestamp:   int64(event.Timestamp),
 			}
 			traceEventSink.SendExecveEvent(execveEvent)
 		}

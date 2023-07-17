@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/cilium/ebpf v0.10.0
 	github.com/inspektor-gadget/inspektor-gadget v0.17.0
+	go.etcd.io/bbolt v1.3.7
 	k8s.io/apimachinery v0.27.3
 	k8s.io/client-go v0.27.3
 )

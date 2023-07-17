@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"kapprofiler/pkg/eventsink"
 	"kapprofiler/pkg/tracing"
 )
 
@@ -79,8 +80,14 @@ func main() {
 		log.Fatalf("Failed to initialize service: %v\n", err)
 	}
 
+	// Create the event sink
+	eventSink, err := eventsink.NewEventSink("")
+	if err != nil {
+		log.Fatalf("Failed to create event sink: %v\n", err)
+	}
+
 	// Create the tracer
-	tracer := tracing.NewTracer(NodeName, k8sConfig, nil)
+	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink)
 
 	// Start the service
 	if err := tracer.Start(); err != nil {
