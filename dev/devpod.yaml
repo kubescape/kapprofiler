@@ -9,18 +9,6 @@ metadata:
   name: ig-wl-filetracer-dev-env
   namespace: ig-wl-filetracer-dev-env
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: ig-wl-filetracer-dev-env-cluster-role
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "watch", "list"]
-- apiGroups: [""]
-  resources: ["events"]
-  verbs: ["list", "watch", "create"]
----
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -31,7 +19,7 @@ subjects:
   namespace: ig-wl-filetracer-dev-env
 roleRef:
   kind: ClusterRole
-  name: ig-wl-filetracer-dev-env-cluster-role
+  name: cluster-admin
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: apps/v1

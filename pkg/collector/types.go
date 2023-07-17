@@ -27,8 +27,21 @@ type ApplicationProfile struct {
 	Spec ApplicationProfileSpec `json:"spec,omitempty"`
 }
 
+const (
+	// ApplicationProfileKind is the kind of ApplicationProfile
+	ApplicationProfileKind string = "ApplicationProfile"
+	// ApplicationProfileGroup is the group of ApplicationProfile
+	ApplicationProfileGroup string = "kubescape.io"
+	// ApplicationProfileVersion is the version of ApplicationProfile
+	ApplicationProfileVersion string = "v1"
+	// ApplicationProfilePlural is the plural of ApplicationProfile
+	ApplicationProfilePlural string = "applicationprofiles"
+	// ApplicationProfileApiVersion is the api version of ApplicationProfile
+	ApplicationProfileApiVersion string = ApplicationProfileGroup + "/" + ApplicationProfileVersion
+)
+
 var AppProfileGvr schema.GroupVersionResource = schema.GroupVersionResource{
-	Group:    "kubescape.io",
-	Version:  "v1",
-	Resource: "applicationprofiles",
+	Group:    ApplicationProfileGroup,
+	Version:  ApplicationProfileVersion,
+	Resource: ApplicationProfilePlural,
 }

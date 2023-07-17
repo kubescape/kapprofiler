@@ -130,8 +130,8 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			// it does not exist, create it
 			appProfile := &ApplicationProfile{
 				TypeMeta: v1.TypeMeta{
-					Kind:       "ApplicationProfile",
-					APIVersion: "kubescape.io/v1",
+					Kind:       ApplicationProfileKind,
+					APIVersion: ApplicationProfileApiVersion,
 				},
 				ObjectMeta: v1.ObjectMeta{
 					Name: appProfileName,
@@ -160,6 +160,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
 			}
+			// Delete the same container if it exists
+			for i, container := range appProfile.Spec.Containers {
+				if container.Name == id.Container {
+					appProfile.Spec.Containers = append(appProfile.Spec.Containers[:i], appProfile.Spec.Containers[i+1:]...)
+					break
+				}
+			}
+
 			// it exists, update it
 			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
 
