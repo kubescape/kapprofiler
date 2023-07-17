@@ -5,6 +5,8 @@ import (
 	"kapprofiler/pkg/tracing"
 	"os"
 
+	"log"
+
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -61,24 +63,27 @@ func (es *EventSink) execveEventWorker() error {
 	// Wait for execve events and store them in the database
 	for event := range es.execveEventChannel {
 		bucket := fmt.Sprintf("execve-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
-				// TODO: Report error
+				log.Printf("error creating bucket: %s\n", err)
 				return err
 			}
 			sEvent, err := event.GobEncode()
 			if err != nil {
-				// TODO: Report error
+				log.Printf("error encoding execve event: %s\n", err)
 				return err
 			}
 			err = b.Put(sEvent, nil)
 			if err != nil {
-				// TODO: Report error
+				log.Printf("error storing execve event: %s\n", err)
 				return err
 			}
 			return nil
 		})
+		if err != nil {
+			log.Printf("error storing execve event: %s\n", err)
+		}
 	}
 
 	return nil
@@ -115,7 +120,10 @@ func (es *EventSink) GetExecveEvents(namespace string, podName string, container
 		})
 		return nil
 	})
-	return events, err
+	if err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 func (es *EventSink) SendExecveEvent(event *tracing.ExecveEvent) {

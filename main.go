@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
+	"kapprofiler/pkg/collector"
 	"kapprofiler/pkg/eventsink"
 	"kapprofiler/pkg/tracing"
 )
@@ -86,8 +87,26 @@ func main() {
 		log.Fatalf("Failed to create event sink: %v\n", err)
 	}
 
+	// Start the event sink
+	if err := eventSink.Start(); err != nil {
+		log.Fatalf("Failed to start event sink: %v\n", err)
+	}
+	defer eventSink.Stop()
+
+	// Start the collector manager
+	collectorManagerConfig := &collector.CollectorManagerConfig{
+		EventSink: eventSink,
+		Interval:  10, // 10 seconds for now, TODO: make it configurable
+		K8sConfig: k8sConfig,
+	}
+	cm, err := collector.StartCollectorManager(collectorManagerConfig)
+	if err != nil {
+		log.Fatalf("Failed to start collector manager: %v\n", err)
+	}
+	defer cm.StopCollectorManager()
+
 	// Create the tracer
-	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink)
+	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink, cm)
 
 	// Start the service
 	if err := tracer.Start(); err != nil {

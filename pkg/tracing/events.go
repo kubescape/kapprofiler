@@ -5,6 +5,23 @@ import (
 	"encoding/gob"
 )
 
+const (
+	ContainerActivityEventStart = "start"
+	ContainerActivityEventStop  = "stop"
+)
+
+type ContainerActivityEventListener interface {
+	// OnContainerActivityEvent is called when a container activity event is received
+	OnContainerActivityEvent(event *ContainerActivityEvent)
+}
+
+type ContainerActivityEvent struct {
+	ContainerName string
+	PodName       string
+	Namespace     string
+	Activity      string
+}
+
 type ExecveEvent struct {
 	ContainerID string
 	PodName     string

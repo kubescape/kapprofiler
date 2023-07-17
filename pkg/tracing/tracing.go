@@ -23,10 +23,13 @@ type Tracer struct {
 
 	// Trace event sink object
 	eventSink EventSink
+
+	// Container activity listener
+	containerActivityListener ContainerActivityEventListener
 }
 
-func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink) *Tracer {
-	return &Tracer{running: false, nodeName: nodeName, k8sConfig: k8sConfig, eventSink: eventSink}
+func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink, contActivityListener ContainerActivityEventListener) *Tracer {
+	return &Tracer{running: false, nodeName: nodeName, k8sConfig: k8sConfig, eventSink: eventSink, containerActivityListener: contActivityListener}
 }
 
 func (t *Tracer) Start() error {
@@ -71,7 +74,7 @@ func (t *Tracer) setupContainerCollection() error {
 	t.tCollection = tracerCollection
 
 	// Start the container collection
-	containerEventFuncs := []containercollection.FuncNotify{containerEventHandler}
+	containerEventFuncs := []containercollection.FuncNotify{t.containerEventHandler}
 
 	// Define the different options for the container collection instance
 	opts := []containercollection.ContainerCollectionOption{
@@ -116,10 +119,24 @@ func (t *Tracer) stopContainerCollection() error {
 	return nil
 }
 
-func containerEventHandler(notif containercollection.PubSubEvent) {
-	if notif.Type == containercollection.EventTypeAddContainer {
+func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
+	if t.containerActivityListener != nil {
+		if notif.Type == containercollection.EventTypeAddContainer {
 
-	} else if notif.Type == containercollection.EventTypeRemoveContainer {
+			t.containerActivityListener.OnContainerActivityEvent(&ContainerActivityEvent{
+				PodName:       notif.Container.Podname,
+				Namespace:     notif.Container.Namespace,
+				ContainerName: notif.Container.Name,
+				Activity:      ContainerActivityEventStart,
+			})
 
+		} else if notif.Type == containercollection.EventTypeRemoveContainer {
+			t.containerActivityListener.OnContainerActivityEvent(&ContainerActivityEvent{
+				PodName:       notif.Container.Podname,
+				Namespace:     notif.Container.Namespace,
+				ContainerName: notif.Container.Name,
+				Activity:      ContainerActivityEventStop,
+			})
+		}
 	}
 }
