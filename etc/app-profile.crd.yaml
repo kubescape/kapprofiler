@@ -20,15 +20,11 @@ spec:
                 items:
                   type: object
                   properties:
-                    name:
-                      type: string
                     execs:
                       type: array
                       items:
                         type: object
                         properties:
-                          path:
-                            type: string
                           args:
                             type: array
                             items:
@@ -37,6 +33,87 @@ spec:
                             type: array
                             items:
                               type: string
+                          path:
+                            type: string
+                    name:
+                      type: string
+                    networkActivity:
+                      type: object
+                      properties:
+                        incoming:
+                          type: object
+                          properties:
+                            tcpconnections:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  podselectors:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        matchExpressions:
+                                          type: array
+                                          items:
+                                            type: object
+                                            properties:
+                                              key:
+                                                type: string
+                                              operator:
+                                                type: string
+                                              values:
+                                                type: array
+                                                items:
+                                                  type: string
+                                  rawsonnection:
+                                    type: object
+                                    properties:
+                                      destip:
+                                        type: string
+                                      destport:
+                                        type: integer
+                                      sourceip:
+                                        type: string
+                                      sourceport:
+                                        type: integer
+                        outgoing:
+                          type: object
+                          properties:
+                            tcpconnections:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  podselectors:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        matchExpressions:
+                                          type: array
+                                          items:
+                                            type: object
+                                            properties:
+                                              key:
+                                                type: string
+                                              operator:
+                                                type: string
+                                              values:
+                                                type: array
+                                                items:
+                                                  type: string
+                                  rawsonnection:
+                                    type: object
+                                    properties:
+                                      destip:
+                                        type: string
+                                      destport:
+                                        type: integer
+                                      sourceip:
+                                        type: string
+                                      sourceport:
+                                        type: integer
   scope: Namespaced
   names:
     plural: applicationprofiles

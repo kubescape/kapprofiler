@@ -81,7 +81,6 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
 		running: true,
 	}
 	// Add a timer for collection of data from container events
-	//startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 	startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 }
 
@@ -100,25 +99,65 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 	// Check if container is still running (is it in the map?)
 	if _, ok := cm.containers[*id]; ok {
 		// Collect data from container events
-		events, err := cm.eventSink.GetExecveEvents(id.Namespace, id.PodName, id.Container)
+		execveEvents, err := cm.eventSink.GetExecveEvents(id.Namespace, id.PodName, id.Container)
 		if err != nil {
 			log.Printf("error getting execve events: %s\n", err)
 			return
 		}
 
+		tcpEvents, err := cm.eventSink.GetTcpEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting tcp events: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(events) == 0 {
+		if len(execveEvents) == 0 && len(tcpEvents) == 0 {
 			return
 		}
 
 		containerProfile := ContainerProfile{Name: id.Container}
-		for _, event := range events {
+		for _, event := range execveEvents {
 			// TODO: check if event is already in containerProfile.Execs
 			containerProfile.Execs = append(containerProfile.Execs, ExecCalls{
 				Path: event.PathName,
 				Args: event.Args,
 				Envs: event.Env,
 			})
+		}
+
+		var outgoingTcpConnections []EnrichedTcpConnection
+		var incomingTcpConnections []EnrichedTcpConnection
+		// Add network activity to container profile
+		for _, tcpEvent := range tcpEvents {
+			if tcpEvent.Operation == "connect" {
+				outgoingTcpConnections = append(outgoingTcpConnections, EnrichedTcpConnection{
+					RawConnection: RawTcpConnection{
+						SourceIp:   tcpEvent.Source,
+						SourcePort: tcpEvent.SourcePort,
+						DestIp:     tcpEvent.Destination,
+						DestPort:   tcpEvent.DestPort,
+					},
+				})
+			} else if tcpEvent.Operation == "accept" {
+				incomingTcpConnections = append(incomingTcpConnections, EnrichedTcpConnection{
+					RawConnection: RawTcpConnection{
+						SourceIp:   tcpEvent.Source,
+						SourcePort: tcpEvent.SourcePort,
+						DestIp:     tcpEvent.Destination,
+						DestPort:   tcpEvent.DestPort,
+					},
+				})
+			}
+		}
+
+		containerProfile.NetworkActivity = NetworkActivity{
+			Incoming: ConnectionContainer{
+				TcpConnections: incomingTcpConnections,
+			},
+			Outgoing: ConnectionContainer{
+				TcpConnections: outgoingTcpConnections,
+			},
 		}
 
 		// The name of the ApplicationProfile you're looking for.

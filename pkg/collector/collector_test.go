@@ -5,6 +5,7 @@ import (
 	"kapprofiler/pkg/collector"
 	"kapprofiler/pkg/eventsink"
 	"kapprofiler/pkg/tracing"
+	"log"
 	"os/exec"
 	"testing"
 	"time"
@@ -14,6 +15,9 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	openapi3gen "github.com/getkin/kin-openapi/openapi3gen"
+	yaml "gopkg.in/yaml.v2"
 )
 
 func GetKubernetesConfig() (*rest.Config, error) {
@@ -91,6 +95,18 @@ func TestCollectorBasic(t *testing.T) {
 		Timestamp:   0,
 	})
 
+	eventSink.SendTcpEvent(&tracing.TcpEvent{
+		ContainerID: containedID.Container,
+		PodName:     containedID.PodName,
+		Namespace:   containedID.Namespace,
+		Operation:   "connect",
+		Source:      "10.0.0.1",
+		SourcePort:  1234,
+		Destination: "10.0.0.2",
+		DestPort:    80,
+		Timestamp:   0,
+	})
+
 	// Let the event sink process the event
 	time.Sleep(1 * time.Second)
 
@@ -151,4 +167,26 @@ func TestCollectorBasic(t *testing.T) {
 		t.Errorf("expected path name test, got %s\n", appProfile.Spec.Containers[0].Execs[0].Path)
 	}
 
+	// Verify length TCP events
+	if len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections) != 1 {
+		t.Errorf("expected 1 TCP event, got %d\n", len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections))
+	}
+
+	// Verify TCP event
+	if appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections[0].RawConnection.SourceIp != "10.0.0.1" {
+		t.Errorf("expected source 10.0.0.1, got %s\n", appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections[0].RawConnection.SourceIp)
+	}
+}
+
+// Test that a openapispec can be generated from the structs
+func TestOpenApiSpec(t *testing.T) {
+	schemaRef, err := openapi3gen.NewSchemaRefForValue(&collector.ApplicationProfileSpec{}, nil)
+	if err != nil {
+		t.Fatalf("error generating openapi spec: %s\n", err)
+	}
+	yamlData, err := yaml.Marshal(schemaRef)
+	if err != nil {
+		t.Fatalf("error marshaling openapi spec: %s\n", err)
+	}
+	log.Printf("%s\n", yamlData)
 }

@@ -5,6 +5,7 @@ import (
 
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
+	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 
 	"k8s.io/client-go/rest"
@@ -20,6 +21,7 @@ type Tracer struct {
 
 	// IG tracers
 	execTracer *tracerexec.Tracer
+	tcpTracer  *tracertcp.Tracer
 
 	// Trace event sink object
 	eventSink EventSink
