@@ -96,7 +96,7 @@ func main() {
 	// Start the collector manager
 	collectorManagerConfig := &collector.CollectorManagerConfig{
 		EventSink: eventSink,
-		Interval:  10, // 10 seconds for now, TODO: make it configurable
+		Interval:  60, // 60 seconds for now, TODO: make it configurable
 		K8sConfig: k8sConfig,
 	}
 	cm, err := collector.StartCollectorManager(collectorManagerConfig)

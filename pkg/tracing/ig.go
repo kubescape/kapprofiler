@@ -76,18 +76,40 @@ func (t *Tracer) startExecTracing() error {
 
 func (t *Tracer) tcpEventCallback(event *tracertcptype.Event) {
 	if event.Type == eventtypes.NORMAL {
+		var src, dest string
+		var srcPort, destPort int
+
+		// If the operation is accept, then the source and destination are reversed (interesting why?)
+		if event.Operation == "accept" {
+			destPort = int(event.Sport)
+			dest = event.Saddr
+			srcPort = int(event.Dport)
+			src = event.Daddr
+		} else if event.Operation != "connect" {
+			destPort = int(event.Sport)
+			dest = event.Saddr
+			srcPort = int(event.Dport)
+			src = event.Daddr
+		} else {
+			// Don't care about other operations
+			return
+		}
+
 		tcpEvent := &TcpEvent{
 			ContainerID: event.Container,
 			PodName:     event.Pod,
 			Namespace:   event.Namespace,
-			Source:      event.Saddr,
-			SourcePort:  int(event.Sport),
-			Destination: event.Daddr,
-			DestPort:    int(event.Dport),
+			Source:      src,
+			SourcePort:  srcPort,
+			Destination: dest,
+			DestPort:    destPort,
 			Operation:   event.Operation,
 			Timestamp:   int64(event.Timestamp),
 		}
+
 		t.eventSink.SendTcpEvent(tcpEvent)
+	} else {
+		// TODO: Handle error
 	}
 }
 
