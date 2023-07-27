@@ -19,7 +19,7 @@ type RawTcpConnection struct {
 }
 
 type EnrichedTcpConnection struct {
-	RawConnection RawTcpConnection   `json:"rawsonnection",yaml:"rawconnection"`
+	RawConnection RawTcpConnection   `json:"rawconnection",yaml:"rawconnection"`
 	PodSelectors  []v1.LabelSelector `json:"podselectors",yaml:"podselectors"`
 }
 
