@@ -4,7 +4,7 @@ metadata:
   creationTimestamp: "2023-07-26T21:06:49Z"
   generation: 1
   name: pod-test-nginx-kcgbl
-  namespace: ig-wl-filetracer-dev-env
+  namespace: kapprofiler-dev-env
   resourceVersion: "46259"
   uid: 3238a6df-9ff1-4bcf-9c42-331e151d6c24
 spec:

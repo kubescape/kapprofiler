@@ -1,22 +1,22 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ig-wl-filetracer-dev-env
+  name: kapprofiler-dev-env
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: ig-wl-filetracer-dev-env
-  namespace: ig-wl-filetracer-dev-env
+  name: kapprofiler-dev-env
+  namespace: kapprofiler-dev-env
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: ig-wl-filetracer-dev-env-cluster-role-binding
+  name: kapprofiler-dev-env-cluster-role-binding
 subjects:
 - kind: ServiceAccount
-  name: ig-wl-filetracer-dev-env
-  namespace: ig-wl-filetracer-dev-env
+  name: kapprofiler-dev-env
+  namespace: kapprofiler-dev-env
 roleRef:
   kind: ClusterRole
   name: cluster-admin
@@ -25,22 +25,24 @@ roleRef:
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: ig-wl-filetracer-dev-env
-  namespace: ig-wl-filetracer-dev-env
+  name: kapprofiler-dev-env
+  namespace: kapprofiler-dev-env
   labels:
-    k8s-app: ig-wl-filetracer-dev-env
+    k8s-app: kapprofiler-dev-env
 spec:
   selector:
     matchLabels:
-      k8s-app: ig-wl-filetracer-dev-env
+      k8s-app: kapprofiler-dev-env
   template:
     metadata:
       labels:
-        k8s-app: ig-wl-filetracer-dev-env
+        k8s-app: kapprofiler-dev-env
     spec:
-      serviceAccount: ig-wl-filetracer-dev-env
+      serviceAccount: kapprofiler-dev-env
       hostPID: true
       hostNetwork: false
+      imagePullSecrets:
+      - name: regcred
       containers:
       - name: dev-env
         terminationMessagePolicy: FallbackToLogsOnError

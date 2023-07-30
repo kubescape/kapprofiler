@@ -7,7 +7,7 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-export NAMESPACE=ig-wl-filetracer-dev-env
-export POD=$(kubectl -n $NAMESPACE get pods -l k8s-app=ig-wl-filetracer-dev-env -o jsonpath="{.items[0].metadata.name}")
+export NAMESPACE=kapprofiler-dev-env
+export POD=$(kubectl -n $NAMESPACE get pods -l k8s-app=kapprofiler-dev-env -o jsonpath="{.items[0].metadata.name}")
 
 kubectl cp $1 $NAMESPACE/$POD:/bin/$1
