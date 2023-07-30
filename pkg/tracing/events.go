@@ -20,6 +20,9 @@ type ContainerActivityEvent struct {
 	PodName       string
 	Namespace     string
 	Activity      string
+	// Low level container information
+	ContainerID string
+	NsMntId     uint64
 }
 
 type ExecveEvent struct {

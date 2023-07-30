@@ -20,6 +20,10 @@ spec:
                 items:
                   type: object
                   properties:
+                    syscalls:
+                      type: array
+                      items:
+                        type: string
                     execs:
                       type: array
                       items:

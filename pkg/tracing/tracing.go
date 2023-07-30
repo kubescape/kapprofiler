@@ -1,15 +1,25 @@
 package tracing
 
 import (
+	"fmt"
 	"log"
 
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
+	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 
 	"k8s.io/client-go/rest"
 )
+
+type ITracer interface {
+	Start() error
+	Stop() error
+	AddContainerActivityListener(listener ContainerActivityEventListener)
+	RemoveContainerActivityListener(listener ContainerActivityEventListener)
+	PeekSyscallInContainer(nsMountId uint64) ([]string, error)
+}
 
 type Tracer struct {
 	running           bool
@@ -20,18 +30,19 @@ type Tracer struct {
 	containerSelector containercollection.ContainerSelector
 
 	// IG tracers
-	execTracer *tracerexec.Tracer
-	tcpTracer  *tracertcp.Tracer
+	execTracer    *tracerexec.Tracer
+	tcpTracer     *tracertcp.Tracer
+	syscallTracer *tracerseccomp.Tracer
 
 	// Trace event sink object
 	eventSink EventSink
 
 	// Container activity listener
-	containerActivityListener ContainerActivityEventListener
+	containerActivityListener []ContainerActivityEventListener
 }
 
-func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink, contActivityListener ContainerActivityEventListener) *Tracer {
-	return &Tracer{running: false, nodeName: nodeName, k8sConfig: k8sConfig, eventSink: eventSink, containerActivityListener: contActivityListener}
+func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink) *Tracer {
+	return &Tracer{running: false, nodeName: nodeName, k8sConfig: k8sConfig, eventSink: eventSink, containerActivityListener: []ContainerActivityEventListener{}}
 }
 
 func (t *Tracer) Start() error {
@@ -61,6 +72,30 @@ func (t *Tracer) Stop() error {
 		t.running = false
 	}
 	return nil
+}
+
+func (t *Tracer) AddContainerActivityListener(listener ContainerActivityEventListener) {
+	if t != nil && t.containerActivityListener != nil {
+		t.containerActivityListener = append(t.containerActivityListener, listener)
+	}
+}
+
+func (t *Tracer) RemoveContainerActivityListener(listener ContainerActivityEventListener) {
+	if t != nil && t.containerActivityListener != nil {
+		for i, l := range t.containerActivityListener {
+			if l == listener {
+				t.containerActivityListener = append(t.containerActivityListener[:i], t.containerActivityListener[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+func (t *Tracer) PeekSyscallInContainer(nsMountId uint64) ([]string, error) {
+	if t == nil || !t.running {
+		return nil, fmt.Errorf("tracing not running")
+	}
+	return t.syscallTracer.Peek(nsMountId)
 }
 
 func (t *Tracer) setupContainerCollection() error {
@@ -122,23 +157,23 @@ func (t *Tracer) stopContainerCollection() error {
 }
 
 func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
-	if t.containerActivityListener != nil {
-		if notif.Type == containercollection.EventTypeAddContainer {
-
-			t.containerActivityListener.OnContainerActivityEvent(&ContainerActivityEvent{
-				PodName:       notif.Container.Podname,
-				Namespace:     notif.Container.Namespace,
-				ContainerName: notif.Container.Name,
-				Activity:      ContainerActivityEventStart,
-			})
-
-		} else if notif.Type == containercollection.EventTypeRemoveContainer {
-			t.containerActivityListener.OnContainerActivityEvent(&ContainerActivityEvent{
-				PodName:       notif.Container.Podname,
-				Namespace:     notif.Container.Namespace,
-				ContainerName: notif.Container.Name,
-				Activity:      ContainerActivityEventStop,
-			})
+	if t.containerActivityListener != nil && len(t.containerActivityListener) > 0 {
+		activityEvent := &ContainerActivityEvent{
+			PodName:       notif.Container.Podname,
+			Namespace:     notif.Container.Namespace,
+			ContainerName: notif.Container.Name,
+			NsMntId:       notif.Container.Mntns,
+			ContainerID:   notif.Container.ID,
 		}
+		if notif.Type == containercollection.EventTypeAddContainer {
+			activityEvent.Activity = ContainerActivityEventStart
+		} else if notif.Type == containercollection.EventTypeRemoveContainer {
+			activityEvent.Activity = ContainerActivityEventStop
+		}
+		// Notify listeners
+		for _, listener := range t.containerActivityListener {
+			listener.OnContainerActivityEvent(activityEvent)
+		}
+
 	}
 }

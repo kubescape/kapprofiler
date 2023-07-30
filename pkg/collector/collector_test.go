@@ -20,6 +20,27 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+type TestTracer struct {
+}
+
+func (t *TestTracer) Start() error {
+	return nil
+}
+
+func (t *TestTracer) Stop() error {
+	return nil
+}
+
+func (t *TestTracer) AddContainerActivityListener(listener tracing.ContainerActivityEventListener) {
+}
+
+func (t *TestTracer) RemoveContainerActivityListener(listener tracing.ContainerActivityEventListener) {
+}
+
+func (t *TestTracer) PeekSyscallInContainer(nsMountId uint64) ([]string, error) {
+	return []string{"open", "close"}, nil
+}
+
 func GetKubernetesConfig() (*rest.Config, error) {
 	// Check if the Kubernetes cluster is reachable
 	// Load the Kubernetes configuration from the default location
@@ -68,6 +89,7 @@ func TestCollectorBasic(t *testing.T) {
 		Interval:  10,
 		K8sConfig: k8sConfig,
 		EventSink: eventSink,
+		Tracer:    &TestTracer{},
 	})
 	if err != nil {
 		t.Fatalf("error starting collector manager: %s\n", err)
@@ -95,6 +117,7 @@ func TestCollectorBasic(t *testing.T) {
 		Timestamp:   0,
 	})
 
+	// Send TCP event
 	eventSink.SendTcpEvent(&tracing.TcpEvent{
 		ContainerID: containedID.Container,
 		PodName:     containedID.PodName,

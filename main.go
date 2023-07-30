@@ -93,9 +93,13 @@ func main() {
 	}
 	defer eventSink.Stop()
 
+	// Create the tracer
+	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink)
+
 	// Start the collector manager
 	collectorManagerConfig := &collector.CollectorManagerConfig{
 		EventSink: eventSink,
+		Tracer:    tracer,
 		Interval:  60, // 60 seconds for now, TODO: make it configurable
 		K8sConfig: k8sConfig,
 	}
@@ -104,9 +108,6 @@ func main() {
 		log.Fatalf("Failed to start collector manager: %v\n", err)
 	}
 	defer cm.StopCollectorManager()
-
-	// Create the tracer
-	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink, cm)
 
 	// Start the service
 	if err := tracer.Start(); err != nil {

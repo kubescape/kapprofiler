@@ -20,6 +20,9 @@ type ContainerId struct {
 	Namespace string
 	PodName   string
 	Container string
+	// Low level identifiers
+	ContainerID string
+	NsMntId     uint64
 }
 
 type ContainerState struct {
@@ -37,6 +40,9 @@ type CollectorManager struct {
 	// Event sink
 	eventSink *eventsink.EventSink
 
+	// Tracer
+	tracer tracing.ITracer
+
 	// config
 	config CollectorManagerConfig
 }
@@ -48,6 +54,8 @@ type CollectorManagerConfig struct {
 	Interval uint64
 	// Kubernetes configuration
 	K8sConfig *rest.Config
+	// Tracer object
+	Tracer tracing.ITracer
 }
 
 func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, error) {
@@ -66,12 +74,19 @@ func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, e
 		dynamicClient: dynamicClient,
 		config:        *config,
 		eventSink:     config.EventSink,
+		tracer:        config.Tracer,
 	}
+
+	// Setup container events listener
+	cm.tracer.AddContainerActivityListener(cm)
 
 	return cm, nil
 }
 
 func (cm *CollectorManager) StopCollectorManager() error {
+	// Stop container events listener
+	cm.tracer.RemoveContainerActivityListener(cm)
+
 	return nil
 }
 
@@ -111,12 +126,23 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		syscallList, err := cm.tracer.PeekSyscallInContainer(id.NsMntId)
+		if err != nil {
+			log.Printf("error getting syscall list: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(execveEvents) == 0 && len(tcpEvents) == 0 {
+		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(syscallList) == 0 {
 			return
 		}
 
 		containerProfile := ContainerProfile{Name: id.Container}
+
+		// Add syscalls to container profile
+		containerProfile.SysCalls = append(containerProfile.SysCalls, syscallList...)
+
+		// Add execve events to container profile
 		for _, event := range execveEvents {
 			// TODO: check if event is already in containerProfile.Execs
 			containerProfile.Execs = append(containerProfile.Execs, ExecCalls{
@@ -126,9 +152,9 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			})
 		}
 
+		// Add network activity to container profile
 		var outgoingTcpConnections []EnrichedTcpConnection
 		var incomingTcpConnections []EnrichedTcpConnection
-		// Add network activity to container profile
 		for _, tcpEvent := range tcpEvents {
 			if tcpEvent.Operation == "connect" {
 				outgoingTcpConnections = append(outgoingTcpConnections, EnrichedTcpConnection{
@@ -193,6 +219,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				log.Printf("error creating application profile: %s\n", err)
 			}
 		} else {
+			// TODO Change the update to patch
 			// Convert the raw object to a typed struct.
 			appProfile := &ApplicationProfile{}
 			err = runtime.DefaultUnstructuredConverter.FromUnstructured(appProfileRaw.Object, appProfile)
@@ -211,7 +238,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
 
 			// Convert the typed struct to a raw object.
-			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
+			appProfileRawNew, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
 			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Update(
 				context.Background(),
 				&unstructured.Unstructured{
@@ -241,15 +268,19 @@ func startContainerTimer(id *ContainerId, seconds uint64, callback func(id *Cont
 func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerActivityEvent) {
 	if event.Activity == tracing.ContainerActivityEventStart {
 		cm.ContainerStarted(&ContainerId{
-			Namespace: event.Namespace,
-			PodName:   event.PodName,
-			Container: event.ContainerName,
+			Namespace:   event.Namespace,
+			PodName:     event.PodName,
+			Container:   event.ContainerName,
+			NsMntId:     event.NsMntId,
+			ContainerID: event.ContainerID,
 		})
 	} else if event.Activity == tracing.ContainerActivityEventStop {
 		cm.ContainerStopped(&ContainerId{
-			Namespace: event.Namespace,
-			PodName:   event.PodName,
-			Container: event.ContainerName,
+			Namespace:   event.Namespace,
+			PodName:     event.PodName,
+			Container:   event.ContainerName,
+			NsMntId:     event.NsMntId,
+			ContainerID: event.ContainerID,
 		})
 	}
 }

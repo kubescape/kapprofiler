@@ -6,41 +6,42 @@ import (
 )
 
 type ExecCalls struct {
-	Path string   `json:"path",yaml:"path"`
-	Args []string `json:"args",yaml:"args"`
-	Envs []string `json:"envs",yaml:"envs"`
+	Path string   `json:"path" yaml:"path"`
+	Args []string `json:"args" yaml:"args"`
+	Envs []string `json:"envs" yaml:"envs"`
 }
 
 type RawTcpConnection struct {
-	SourceIp   string `json:"sourceip",yaml:"sourceip"`
-	SourcePort int    `json:"sourceport",yaml:"sourceport"`
-	DestIp     string `json:"destip",yaml:"destip"`
-	DestPort   int    `json:"destport",yaml:"destport"`
+	SourceIp   string `json:"sourceip" yaml:"sourceip"`
+	SourcePort int    `json:"sourceport" yaml:"sourceport"`
+	DestIp     string `json:"destip" yaml:"destip"`
+	DestPort   int    `json:"destport" yaml:"destport"`
 }
 
 type EnrichedTcpConnection struct {
-	RawConnection RawTcpConnection   `json:"rawconnection",yaml:"rawconnection"`
-	PodSelectors  []v1.LabelSelector `json:"podselectors",yaml:"podselectors"`
+	RawConnection RawTcpConnection   `json:"rawconnection" yaml:"rawconnection"`
+	PodSelectors  []v1.LabelSelector `json:"podselectors" yaml:"podselectors"`
 }
 
 type ConnectionContainer struct {
 	// Enriched connections
-	TcpConnections []EnrichedTcpConnection `json:"tcpconnections",yaml:"tcpconnections"`
+	TcpConnections []EnrichedTcpConnection `json:"tcpconnections" yaml:"tcpconnections"`
 }
 
 type NetworkActivity struct {
-	Incoming ConnectionContainer `json:"incoming",yaml:"incoming"`
-	Outgoing ConnectionContainer `json:"outgoing",yaml:"outgoing"`
+	Incoming ConnectionContainer `json:"incoming" yaml:"incoming"`
+	Outgoing ConnectionContainer `json:"outgoing" yaml:"outgoing"`
 }
 
 type ContainerProfile struct {
-	Name            string          `json:"name",yaml:"name"`
-	Execs           []ExecCalls     `json:"execs",yaml:"execs"`
-	NetworkActivity NetworkActivity `json:"networkActivity",yaml:"networkActivity"`
+	Name            string          `json:"name" yaml:"name"`
+	Execs           []ExecCalls     `json:"execs" yaml:"execs"`
+	NetworkActivity NetworkActivity `json:"networkActivity" yaml:"networkActivity"`
+	SysCalls        []string        `json:"syscalls" yaml:"syscalls"`
 }
 
 type ApplicationProfileSpec struct {
-	Containers []ContainerProfile `json:"containers",yaml:"containers"`
+	Containers []ContainerProfile `json:"containers" yaml:"containers"`
 }
 
 type ApplicationProfile struct {

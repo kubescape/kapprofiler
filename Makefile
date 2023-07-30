@@ -10,7 +10,7 @@ BINARY_NAME = kapprofiler
 GOFILES = $(shell find . -type f -name '*.go')
 
 $(BINARY_NAME): $(GOFILES) go.mod go.sum Makefile
-	CGO_ENABLED=0 go build -o $(BINARY_NAME) -v
+	CGO_ENABLED=1 go build -o $(BINARY_NAME) -v
 
 test:
 	$(GOTEST_SUDO_PREFIX) $(GOTEST) -v ./...

@@ -18,7 +18,7 @@ func TestStartTrace(t *testing.T) {
 	}
 
 	// Exercise
-	testTracer := tracing.NewTracer("test", config, nil, nil)
+	testTracer := tracing.NewTracer("test", config, nil)
 
 	err = testTracer.Start()
 	if err != nil {

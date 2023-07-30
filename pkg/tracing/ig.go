@@ -3,6 +3,7 @@ package tracing
 import (
 	"log"
 
+	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
@@ -15,6 +16,8 @@ const execTraceName = "trace_exec"
 
 // const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
+
+const seccompTraceName = "trace_seccomp"
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -29,6 +32,13 @@ func (t *Tracer) startAppBehaviorTracing() error {
 	err = t.startTcpTracing()
 	if err != nil {
 		log.Printf("error starting tcp tracing: %s\n", err)
+		return err
+	}
+
+	// Start tracing seccomp
+	err = t.startSystemcallTracing()
+	if err != nil {
+		log.Printf("error starting seccomp tracing: %s\n", err)
 		return err
 	}
 
@@ -137,6 +147,17 @@ func (t *Tracer) startTcpTracing() error {
 	return nil
 }
 
+func (t *Tracer) startSystemcallTracing() error {
+	// Add seccomp tracer
+	syscallTracer, err := tracerseccomp.NewTracer()
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	t.syscallTracer = syscallTracer
+	return nil
+}
+
 func (t *Tracer) stopAppBehaviorTracing() error {
 	var err error
 	err = nil
@@ -147,6 +168,10 @@ func (t *Tracer) stopAppBehaviorTracing() error {
 	// Stop tcp tracer
 	if err = t.stopTcpTracing(); err != nil {
 		log.Printf("error stopping tcp tracing: %s\n", err)
+	}
+	// Stop seccomp tracer
+	if err = t.stopSystemcallTracing(); err != nil {
+		log.Printf("error stopping seccomp tracing: %s\n", err)
 	}
 	return err
 }
@@ -168,5 +193,11 @@ func (t *Tracer) stopTcpTracing() error {
 		return err
 	}
 	t.tcpTracer.Stop()
+	return nil
+}
+
+func (t *Tracer) stopSystemcallTracing() error {
+	// Stop seccomp tracer
+	t.syscallTracer.Close()
 	return nil
 }
