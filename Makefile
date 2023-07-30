@@ -22,6 +22,7 @@ open-shell:
 	./scripts/open-shell-in-pod.sh
 
 deploy-dev-pod:
+	kubectl apply -f etc/app-profile.crd.yaml
 	kubectl apply -f dev/devpod.yaml
 
 build: $(BINARY_NAME)
