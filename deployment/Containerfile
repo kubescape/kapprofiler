@@ -1,10 +1,12 @@
-FROM golang:1.20 as builder
-RUN apt-get update && apt-get install -y libseccomp-dev
+
+FROM golang:1.20.6-alpine3.18 as builder
+RUN apk add musl-dev make gcc libseccomp-dev
 WORKDIR /go/src/app
 COPY . .
 RUN make build
 
-FROM scratch
+FROM alpine:3.18
+RUN apk add libseccomp
 COPY --from=builder /go/src/app/kapprofiler /kapprofiler
 ENTRYPOINT ["/kapprofiler"]
 
