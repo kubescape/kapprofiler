@@ -94,7 +94,7 @@ func main() {
 	defer eventSink.Stop()
 
 	// Create the tracer
-	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink)
+	tracer := tracing.NewTracer(NodeName, k8sConfig, eventSink, false)
 
 	// Start the collector manager
 	collectorManagerConfig := &collector.CollectorManagerConfig{

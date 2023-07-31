@@ -22,10 +22,14 @@ type ITracer interface {
 }
 
 type Tracer struct {
+	// Configuration
+	nodeName      string
+	filterByLabel bool
+
+	// Internal state
 	running           bool
 	cCollection       *containercollection.ContainerCollection
 	tCollection       *tracercollection.TracerCollection
-	nodeName          string
 	k8sConfig         *rest.Config
 	containerSelector containercollection.ContainerSelector
 
@@ -41,8 +45,13 @@ type Tracer struct {
 	containerActivityListener []ContainerActivityEventListener
 }
 
-func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink) *Tracer {
-	return &Tracer{running: false, nodeName: nodeName, k8sConfig: k8sConfig, eventSink: eventSink, containerActivityListener: []ContainerActivityEventListener{}}
+func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink, filterByLabel bool) *Tracer {
+	return &Tracer{running: false,
+		nodeName:                  nodeName,
+		filterByLabel:             filterByLabel,
+		k8sConfig:                 k8sConfig,
+		eventSink:                 eventSink,
+		containerActivityListener: []ContainerActivityEventListener{}}
 }
 
 func (t *Tracer) Start() error {
@@ -140,7 +149,9 @@ func (t *Tracer) setupContainerCollection() error {
 	}
 
 	// Define the container selector for later use
-	t.containerSelector.Labels = map[string]string{"kapprofiler/enabled": "true"}
+	if t.filterByLabel {
+		t.containerSelector.Labels = map[string]string{"kapprofiler/enabled": "true"}
+	}
 
 	// Store the container collection instance
 	t.cCollection = containerCollection
