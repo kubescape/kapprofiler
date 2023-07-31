@@ -17,8 +17,6 @@ const execTraceName = "trace_exec"
 // const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
 
-const seccompTraceName = "trace_seccomp"
-
 func (t *Tracer) startAppBehaviorTracing() error {
 
 	// Start tracing execve
@@ -93,13 +91,17 @@ func (t *Tracer) tcpEventCallback(event *tracertcptype.Event) {
 		if event.Operation == "accept" {
 			destPort = int(event.Sport)
 			dest = event.Saddr
-			srcPort = int(event.Dport)
+			// Force it to be 0 for now to prevent feeding data which is not interesting
+			srcPort = 0
+			//srcPort = int(event.Dport)
 			src = event.Daddr
-		} else if event.Operation != "connect" {
-			destPort = int(event.Sport)
-			dest = event.Saddr
-			srcPort = int(event.Dport)
-			src = event.Daddr
+		} else if event.Operation == "connect" {
+			destPort = int(event.Dport)
+			dest = event.Daddr
+			// Force it to be 0 for now to prevent feeding data which is not interesting
+			srcPort = 0
+			//srcPort = int(event.Sport)
+			src = event.Saddr
 		} else {
 			// Don't care about other operations
 			return
