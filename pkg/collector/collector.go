@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"kapprofiler/pkg/eventsink"
 	"kapprofiler/pkg/tracing"
@@ -11,6 +12,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	apitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -190,7 +192,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
 
 		// Get the ApplicationProfile object with the name specified above.
-		appProfileRaw, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
+		_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
 		if err != nil {
 			// it does not exist, create it
 			appProfile := &ApplicationProfile{
@@ -219,36 +221,27 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				log.Printf("error creating application profile: %s\n", err)
 			}
 		} else {
-			// TODO Change the update to patch
-			// Convert the raw object to a typed struct.
 			appProfile := &ApplicationProfile{}
-			err = runtime.DefaultUnstructuredConverter.FromUnstructured(appProfileRaw.Object, appProfile)
-			if err != nil {
-				log.Printf("error converting application profile: %s\n", err)
-			}
-			// Delete the same container if it exists
-			for i, container := range appProfile.Spec.Containers {
-				if container.Name == id.Container {
-					appProfile.Spec.Containers = append(appProfile.Spec.Containers[:i], appProfile.Spec.Containers[i+1:]...)
-					break
-				}
-			}
 
-			// it exists, update it
+			// Add container profile to the list of containers
 			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
 
-			// Convert the typed struct to a raw object.
-			appProfileRawNew, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
-			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Update(
-				context.Background(),
-				&unstructured.Unstructured{
-					Object: appProfileRawNew,
-				},
-				v1.UpdateOptions{})
+			// Convert the typed struct to json string.
+			appProfileRawNew, err := json.Marshal(appProfile)
 			if err != nil {
-				log.Printf("error updating application profile: %s\n", err)
+				log.Printf("error converting application profile: %s\n", err)
+			} else {
+				// Print the json string.
+				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+					appProfileName, apitypes.MergePatchType, appProfileRawNew, v1.PatchOptions{})
+				if err != nil {
+					log.Printf("error patching application profile: %s\n", err)
+				}
 			}
 		}
+
+		// Restart timer
+		startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 	}
 }
 
