@@ -9,6 +9,10 @@ GOGET = $(GOCMD) get
 BINARY_NAME = kapprofiler
 GOFILES = $(shell find . -type f -name '*.go')
 
+# Take image name from env variable or use default
+IMAGE_NAME ?= kapprofiler:latest
+
+
 $(BINARY_NAME): $(GOFILES) go.mod go.sum Makefile
 	CGO_ENABLED=1 go build -o $(BINARY_NAME) -v
 
@@ -26,6 +30,9 @@ deploy-dev-pod:
 	kubectl apply -f dev/devpod.yaml
 
 build: $(BINARY_NAME)
+
+build-image: $(GOFILES) go.mod go.sum Makefile
+	docker build -t $(IMAGE_NAME) .
 
 clean:
 	rm -f $(BINARY_NAME)
