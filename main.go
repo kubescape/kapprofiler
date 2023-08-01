@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"kapprofiler/pkg/collector"
+	"kapprofiler/pkg/controller"
 	"kapprofiler/pkg/eventsink"
 	"kapprofiler/pkg/tracing"
 )
@@ -114,6 +115,11 @@ func main() {
 		log.Fatalf("Failed to start service: %v\n", err)
 	}
 	defer tracer.Stop()
+
+	// Start AppProfile controller
+	appProfileController := controller.NewController(k8sConfig)
+	appProfileController.StartController()
+	defer appProfileController.StopController()
 
 	// Wait for shutdown signal
 	shutdown := make(chan os.Signal, 1)
