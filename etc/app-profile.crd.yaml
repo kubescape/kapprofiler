@@ -51,7 +51,7 @@ spec:
                         taskName:
                           type: string
                         taskId:
-                          type: int
+                          type: integer
                     networkActivity:
                       type: object
                       properties:
