@@ -122,6 +122,12 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		openEvents, err := cm.eventSink.GetOpenEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting open events: %s\n", err)
+			return
+		}
+
 		tcpEvents, err := cm.eventSink.GetTcpEvents(id.Namespace, id.PodName, id.Container)
 		if err != nil {
 			log.Printf("error getting tcp events: %s\n", err)
@@ -135,7 +141,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// If there are no events, return
-		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(syscallList) == 0 {
+		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 {
 			return
 		}
 
@@ -151,6 +157,16 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				Path: event.PathName,
 				Args: event.Args,
 				Envs: event.Env,
+			})
+		}
+
+		// Add open events to container profile
+		for _, event := range openEvents {
+			// TODO: check if event is already in containerProfile.Opens
+			containerProfile.Opens = append(containerProfile.Opens, OpenCalls{
+				Path:     event.PathName,
+				TaskName: event.TaskName,
+				TaskId:   event.TaskId,
 			})
 		}
 

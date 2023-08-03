@@ -6,6 +6,8 @@ import (
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
+	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
+	traceropentype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/types"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracertcptype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/types"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
@@ -13,8 +15,7 @@ import (
 
 // Global constants
 const execTraceName = "trace_exec"
-
-// const openTraceName = "trace_open"
+const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
 
 func (t *Tracer) startAppBehaviorTracing() error {
@@ -40,7 +41,52 @@ func (t *Tracer) startAppBehaviorTracing() error {
 		return err
 	}
 
+	// Start tracing open
+	err = t.startOpenTracing()
+	if err != nil {
+		log.Printf("error starting open tracing: %s\n", err)
+		return err
+	}
+
 	return nil
+}
+
+func (t *Tracer) startOpenTracing() error {
+	if err := t.tCollection.AddTracer(openTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	// Get mount namespace map to filter by containers
+	openMountnsmap, err := t.tCollection.TracerMountNsMap(openTraceName)
+	if err != nil {
+		log.Printf("failed to get openMountnsmap: %s\n", err)
+		return err
+	}
+
+	tracerOpen, err := traceropen.NewTracer(&traceropen.Config{MountnsMap: openMountnsmap}, t.cCollection, t.openEventCallback)
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	t.openTracer = tracerOpen
+
+	return nil
+}
+
+func (t *Tracer) openEventCallback(event *traceropentype.Event) {
+	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
+		openEvent := &OpenEvent{
+			ContainerID: event.Container,
+			PodName:     event.Pod,
+			Namespace:   event.Namespace,
+			PathName:    event.Path,
+			TaskName:    event.Comm,
+			TaskId:      int(event.Pid),
+			Timestamp:   int64(event.Timestamp),
+		}
+		t.eventSink.SendOpenEvent(openEvent)
+	}
 }
 
 func (t *Tracer) execEventCallback(event *tracerexectype.Event) {

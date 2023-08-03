@@ -41,6 +41,17 @@ spec:
                             type: string
                     name:
                       type: string
+                    opens:
+                     type: array
+                     items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        taskName:
+                          type: string
+                        taskId:
+                          type: int
                     networkActivity:
                       type: object
                       properties:
