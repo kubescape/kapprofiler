@@ -162,12 +162,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Add open events to container profile
 		for _, event := range openEvents {
-			// TODO: check if event is already in containerProfile.Opens
-			containerProfile.Opens = append(containerProfile.Opens, OpenCalls{
-				Path:     event.PathName,
-				TaskName: event.TaskName,
-				TaskId:   event.TaskId,
-			})
+			// TODO: check if event is already in containerProfile.Opens & remove the 500 limit
+			if len(containerProfile.Opens) < 500 {
+				containerProfile.Opens = append(containerProfile.Opens, OpenCalls{
+					Path:     event.PathName,
+					TaskName: event.TaskName,
+					TaskId:   event.TaskId,
+				})
+			}
 		}
 
 		// Add network activity to container profile
