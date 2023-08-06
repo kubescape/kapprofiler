@@ -59,7 +59,7 @@ spec:
       - name: kappprofiler
         terminationMessagePolicy: FallbackToLogsOnError
         image: quay.io/benarmosec/kapprofile:latest
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         env:
           - name: NODE_NAME
             valueFrom:

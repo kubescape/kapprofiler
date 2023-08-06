@@ -75,7 +75,7 @@ func (t *Tracer) startOpenTracing() error {
 }
 
 func (t *Tracer) openEventCallback(event *traceropentype.Event) {
-	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
+	if (event.Type == eventtypes.NORMAL || event.Type == eventtypes.INFO) && event.Ret > -1 {
 		openEvent := &OpenEvent{
 			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,
