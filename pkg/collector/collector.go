@@ -9,6 +9,7 @@ import (
 	"log"
 	"time"
 
+	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -164,11 +165,15 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		for _, event := range openEvents {
 			// TODO: check if event is already in containerProfile.Opens & remove the 500 limit
 			if len(containerProfile.Opens) < 500 {
-				containerProfile.Opens = append(containerProfile.Opens, OpenCalls{
+				openEvent := OpenCalls{
 					Path:     event.PathName,
 					TaskName: event.TaskName,
 					TaskId:   event.TaskId,
-				})
+				}
+
+				if !slices.Contains(containerProfile.Opens, openEvent) {
+					containerProfile.Opens = append(containerProfile.Opens, openEvent)
+				}
 			}
 		}
 
