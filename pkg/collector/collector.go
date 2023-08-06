@@ -169,6 +169,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 					Path:     event.PathName,
 					TaskName: event.TaskName,
 					TaskId:   event.TaskId,
+					Mode:     event.Mode,
 				}
 
 				if !slices.Contains(containerProfile.Opens, openEvent) {

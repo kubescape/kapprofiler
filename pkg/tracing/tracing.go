@@ -152,7 +152,7 @@ func (t *Tracer) setupContainerCollection() error {
 
 	// Define the container selector for later use
 	if t.filterByLabel {
-		t.containerSelector.Labels = map[string]string{"kapprofiler/enabled": "true"}
+		t.containerSelector.K8s.PodLabels = map[string]string{"kapprofiler/enabled": "true"}
 	}
 
 	// Store the container collection instance
@@ -172,11 +172,11 @@ func (t *Tracer) stopContainerCollection() error {
 func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
 	if t.containerActivityListener != nil && len(t.containerActivityListener) > 0 {
 		activityEvent := &ContainerActivityEvent{
-			PodName:       notif.Container.Podname,
-			Namespace:     notif.Container.Namespace,
-			ContainerName: notif.Container.Name,
+			PodName:       notif.Container.K8s.PodName,
+			Namespace:     notif.Container.K8s.Namespace,
+			ContainerName: notif.Container.Runtime.ContainerName,
 			NsMntId:       notif.Container.Mntns,
-			ContainerID:   notif.Container.ID,
+			ContainerID:   notif.Container.Runtime.ContainerID,
 		}
 		if notif.Type == containercollection.EventTypeAddContainer {
 			activityEvent.Activity = ContainerActivityEventStart

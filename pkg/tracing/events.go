@@ -55,6 +55,7 @@ type OpenEvent struct {
 	TaskName    string
 	TaskId      int
 	PathName    string
+	Mode        string
 	Timestamp   int64
 }
 
@@ -89,6 +90,9 @@ func (event *OpenEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.TaskId); err != nil {
 		return nil, err
 	}
+	if err := encoder.Encode(event.Mode); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
 		return nil, err
 	}
@@ -114,6 +118,9 @@ func (event *OpenEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.TaskId); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Mode); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {

@@ -64,7 +64,7 @@ func (t *Tracer) startOpenTracing() error {
 		return err
 	}
 
-	tracerOpen, err := traceropen.NewTracer(&traceropen.Config{MountnsMap: openMountnsmap}, t.cCollection, t.openEventCallback)
+	tracerOpen, err := traceropen.NewTracer(&traceropen.Config{MountnsMap: openMountnsmap, FullPath: true}, t.cCollection, t.openEventCallback)
 	if err != nil {
 		log.Printf("error creating tracer: %s\n", err)
 		return err
@@ -77,12 +77,13 @@ func (t *Tracer) startOpenTracing() error {
 func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
 		openEvent := &OpenEvent{
-			ContainerID: event.Container,
-			PodName:     event.Pod,
-			Namespace:   event.Namespace,
-			PathName:    event.Path,
+			ContainerID: event.Event.Runtime.ContainerID,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
+			PathName:    event.FullPath,
 			TaskName:    event.Comm,
 			TaskId:      int(event.Pid),
+			Mode:        event.Mode,
 			Timestamp:   int64(event.Timestamp),
 		}
 		t.eventSink.SendOpenEvent(openEvent)
@@ -92,9 +93,9 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Retval > -1 {
 		execveEvent := &ExecveEvent{
-			ContainerID: event.Container,
-			PodName:     event.Pod,
-			Namespace:   event.Namespace,
+			ContainerID: event.Runtime.ContainerID,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
 			PathName:    event.Args[0],
 			Args:        event.Args[1:],
 			Env:         []string{},
@@ -135,28 +136,28 @@ func (t *Tracer) tcpEventCallback(event *tracertcptype.Event) {
 
 		// If the operation is accept, then the source and destination are reversed (interesting why?)
 		if event.Operation == "accept" {
-			destPort = int(event.Sport)
-			dest = event.Saddr
+			destPort = int(event.SrcEndpoint.Port)
+			dest = event.SrcEndpoint.Addr
 			// Force it to be 0 for now to prevent feeding data which is not interesting
 			srcPort = 0
 			//srcPort = int(event.Dport)
-			src = event.Daddr
+			src = event.DstEndpoint.Addr
 		} else if event.Operation == "connect" {
-			destPort = int(event.Dport)
-			dest = event.Daddr
+			destPort = int(event.DstEndpoint.Port)
+			dest = event.DstEndpoint.Addr
 			// Force it to be 0 for now to prevent feeding data which is not interesting
 			srcPort = 0
 			//srcPort = int(event.Sport)
-			src = event.Saddr
+			src = event.SrcEndpoint.Addr
 		} else {
 			// Don't care about other operations
 			return
 		}
 
 		tcpEvent := &TcpEvent{
-			ContainerID: event.Container,
-			PodName:     event.Pod,
-			Namespace:   event.Namespace,
+			ContainerID: event.Runtime.ContainerID,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
 			Source:      src,
 			SourcePort:  srcPort,
 			Destination: dest,
