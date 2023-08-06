@@ -9,7 +9,6 @@ import (
 	"log"
 	"time"
 
-	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -163,18 +162,15 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Add open events to container profile
 		for _, event := range openEvents {
-			// TODO: check if event is already in containerProfile.Opens & remove the 500 limit
-			if len(containerProfile.Opens) < 500 {
+			// TODO: check if event is already in containerProfile.Opens & remove the 2000 limit.
+			if len(containerProfile.Opens) < 2000 && !openEventExists(event.PathName, containerProfile.Opens) {
 				openEvent := OpenCalls{
 					Path:     event.PathName,
 					TaskName: event.TaskName,
 					TaskId:   event.TaskId,
-					Mode:     event.Mode,
+					Flags:    event.Flags,
 				}
-
-				if !slices.Contains(containerProfile.Opens, openEvent) {
-					containerProfile.Opens = append(containerProfile.Opens, openEvent)
-				}
+				containerProfile.Opens = append(containerProfile.Opens, openEvent)
 			}
 		}
 
@@ -300,4 +296,14 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			ContainerID: event.ContainerID,
 		})
 	}
+}
+
+func openEventExists(path string, openEvents []OpenCalls) bool {
+	for _, element := range openEvents {
+		if element.Path == path {
+			return true
+		}
+	}
+
+	return false
 }

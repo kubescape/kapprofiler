@@ -52,8 +52,10 @@ spec:
                           type: string
                         taskId:
                           type: integer
-                        mode:
-                          type: string
+                        flags:
+                          type: array
+                          items:
+                            type: string
                     networkActivity:
                       type: object
                       properties:

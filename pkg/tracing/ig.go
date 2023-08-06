@@ -83,7 +83,7 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 			PathName:    event.FullPath,
 			TaskName:    event.Comm,
 			TaskId:      int(event.Pid),
-			Mode:        event.Mode,
+			Flags:       event.Flags,
 			Timestamp:   int64(event.Timestamp),
 		}
 		t.eventSink.SendOpenEvent(openEvent)
