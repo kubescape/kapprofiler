@@ -50,6 +50,7 @@ spec:
               - key: kubernetes.io/arch
                 operator: In
                 values:
+                - arm64
                 - amd64
       serviceAccount: kapprofiler
       hostPID: true

@@ -48,11 +48,85 @@ type TcpEvent struct {
 	Timestamp   int64
 }
 
+type OpenEvent struct {
+	ContainerID string
+	PodName     string
+	Namespace   string
+	TaskName    string
+	TaskId      int
+	PathName    string
+	Flags       []string
+	Timestamp   int64
+}
+
 type EventSink interface {
 	// SendExecveEvent sends an execve event to the sink
 	SendExecveEvent(event *ExecveEvent)
 	// SendTcpEvent sends a TCP event to the sink
 	SendTcpEvent(event *TcpEvent)
+	// SendOpenEvent sends a OPEN event to the sink
+	SendOpenEvent(event *OpenEvent)
+}
+
+// Encode/Decode functions for OpenEvent
+func (event *OpenEvent) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerID); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.PodName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Namespace); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.PathName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.TaskName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.TaskId); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Flags); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Timestamp); err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
+func (event *OpenEvent) GobDecode(buf []byte) error {
+	r := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerID); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.PodName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Namespace); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.PathName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.TaskName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.TaskId); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Flags); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Timestamp); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Encode/Decode functions for ExecveEvent
