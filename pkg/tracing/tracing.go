@@ -174,7 +174,7 @@ func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
 		activityEvent := &ContainerActivityEvent{
 			PodName:       notif.Container.K8s.PodName,
 			Namespace:     notif.Container.K8s.Namespace,
-			ContainerName: notif.Container.Runtime.ContainerName,
+			ContainerName: notif.Container.K8s.ContainerName,
 			NsMntId:       notif.Container.Mntns,
 			ContainerID:   notif.Container.Runtime.ContainerID,
 		}

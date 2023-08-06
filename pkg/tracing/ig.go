@@ -77,7 +77,7 @@ func (t *Tracer) startOpenTracing() error {
 func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
 		openEvent := &OpenEvent{
-			ContainerID: event.Event.Runtime.ContainerID,
+			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,
 			Namespace:   event.K8s.Namespace,
 			PathName:    event.FullPath,
@@ -93,7 +93,7 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Retval > -1 {
 		execveEvent := &ExecveEvent{
-			ContainerID: event.Runtime.ContainerID,
+			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,
 			Namespace:   event.K8s.Namespace,
 			PathName:    event.Args[0],
@@ -155,7 +155,7 @@ func (t *Tracer) tcpEventCallback(event *tracertcptype.Event) {
 		}
 
 		tcpEvent := &TcpEvent{
-			ContainerID: event.Runtime.ContainerID,
+			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,
 			Namespace:   event.K8s.Namespace,
 			Source:      src,
