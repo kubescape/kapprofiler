@@ -140,8 +140,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		capabilitiesEvents, err := cm.eventSink.GetCapabilitiesEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting capabilities events: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 {
+		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
 			return
 		}
 
@@ -157,6 +163,15 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				Path: event.PathName,
 				Args: event.Args,
 				Envs: event.Env,
+			})
+		}
+
+		// Add capabilities events to container profile
+		for _, event := range capabilitiesEvents {
+			// TODO: check if event is already in containerProfile.Capabilities
+			containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+				Capabilities: event.CapabilitiesNames,
+				Syscall:      event.Syscall,
 			})
 		}
 
