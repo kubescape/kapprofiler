@@ -7,6 +7,7 @@ require (
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/inspektor-gadget/inspektor-gadget v0.18.2-0.20230802150404-2f6b36dd8642
 	go.etcd.io/bbolt v1.3.7
+	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/apimachinery v0.27.4
 	k8s.io/client-go v0.27.4
@@ -84,7 +85,6 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.opentelemetry.io/otel v1.16.0 // indirect
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.12.0 // indirect
 	golang.org/x/oauth2 v0.7.0 // indirect

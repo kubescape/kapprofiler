@@ -60,12 +60,12 @@ type OpenEvent struct {
 }
 
 type CapabilitiesEvent struct {
-	ContainerID       string
-	PodName           string
-	Namespace         string
-	Syscall           string
-	CapabilitiesNames []string
-	Timestamp         int64
+	ContainerID    string
+	PodName        string
+	Namespace      string
+	Syscall        string
+	CapabilityName string
+	Timestamp      int64
 }
 
 type EventSink interface {
@@ -95,7 +95,7 @@ func (event *CapabilitiesEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.Syscall); err != nil {
 		return nil, err
 	}
-	if err := encoder.Encode(event.CapabilitiesNames); err != nil {
+	if err := encoder.Encode(event.CapabilityName); err != nil {
 		return nil, err
 	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
@@ -119,7 +119,7 @@ func (event *CapabilitiesEvent) GobDecode(buf []byte) error {
 	if err := decoder.Decode(&event.Syscall); err != nil {
 		return err
 	}
-	if err := decoder.Decode(&event.CapabilitiesNames); err != nil {
+	if err := decoder.Decode(&event.CapabilityName); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {

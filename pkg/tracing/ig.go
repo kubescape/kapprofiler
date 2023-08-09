@@ -70,7 +70,7 @@ func (t *Tracer) startCapabilitiesTracing() error {
 	// Get mount namespace map to filter by containers
 	capabilitiesMountnsmap, err := t.tCollection.TracerMountNsMap(capabilitiesTraceName)
 	if err != nil {
-		log.Printf("failed to get openMountnsmap: %s\n", err)
+		log.Printf("failed to get capabilitiesMountnsmap: %s\n", err)
 		return err
 	}
 
@@ -110,12 +110,12 @@ func (t *Tracer) startOpenTracing() error {
 func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		capabilitiesEvent := &CapabilitiesEvent{
-			ContainerID:       event.K8s.ContainerName,
-			PodName:           event.K8s.PodName,
-			Namespace:         event.K8s.Namespace,
-			Syscall:           event.Syscall,
-			CapabilitiesNames: event.CapsNames,
-			Timestamp:         int64(event.Timestamp),
+			ContainerID:    event.K8s.ContainerName,
+			PodName:        event.K8s.PodName,
+			Namespace:      event.K8s.Namespace,
+			Syscall:        event.Syscall,
+			CapabilityName: event.CapName,
+			Timestamp:      int64(event.Timestamp),
 		}
 		t.eventSink.SendCapabilitiesEvent(capabilitiesEvent)
 	}

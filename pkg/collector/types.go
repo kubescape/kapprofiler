@@ -39,7 +39,7 @@ type OpenCalls struct {
 }
 
 type CapabilitiesCalls struct {
-	Capabilities []string `json:"capabilities" yaml:"capabilities"`
+	Capabilities []string `json:"caps" yaml:"caps"`
 	Syscall      string   `json:"syscall" yaml:"syscall"`
 }
 

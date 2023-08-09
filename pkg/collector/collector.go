@@ -9,6 +9,7 @@ import (
 	"log"
 	"time"
 
+	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -165,14 +166,36 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				Envs: event.Env,
 			})
 		}
-
+		//interstingCapabilities := []string{"setpcap", "sysmodule", "net_raw", "net_admin", "sys_admin", "sys_rawio", "sys_ptrace", "sys_boot", "mac_override", "mac_admin", "perfmon", "all", "bpf"}
 		// Add capabilities events to container profile
 		for _, event := range capabilitiesEvents {
 			// TODO: check if event is already in containerProfile.Capabilities
-			containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
-				Capabilities: event.CapabilitiesNames,
-				Syscall:      event.Syscall,
-			})
+			//if slices.Contains(interstingCapabilities, event.CapabilityName) {
+			if len(containerProfile.Capabilities) == 0 {
+				containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+					Capabilities: []string{event.CapabilityName},
+					Syscall:      event.Syscall,
+				})
+			} else {
+				for _, capability := range containerProfile.Capabilities {
+					if capability.Syscall == event.Syscall {
+						if !slices.Contains(capability.Capabilities, event.CapabilityName) {
+							capability.Capabilities = append(capability.Capabilities, event.CapabilityName)
+						}
+					} else {
+						var syscalls []string
+						for _, cap := range containerProfile.Capabilities {
+							syscalls = append(syscalls, cap.Syscall)
+						}
+						if !slices.Contains(syscalls, event.Syscall) {
+							containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+								Capabilities: []string{event.CapabilityName},
+								Syscall:      event.Syscall,
+							})
+						}
+					}
+				}
+			}
 		}
 
 		// Add open events to container profile
