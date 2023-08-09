@@ -162,13 +162,12 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Add open events to container profile
 		for _, event := range openEvents {
-			// TODO: check if event is already in containerProfile.Opens & remove the 2000 limit.
-			if len(containerProfile.Opens) < 2000 && !openEventExists(event.PathName, containerProfile.Opens) {
+			hasSameFile, hasSameFlags := openEventExists(event, containerProfile.Opens)
+			// TODO: check if event is already in containerProfile.Opens & remove the 10000 limit.
+			if len(containerProfile.Opens) < 10000 && !(hasSameFile && hasSameFlags) {
 				openEvent := OpenCalls{
-					Path:     event.PathName,
-					TaskName: event.TaskName,
-					TaskId:   event.TaskId,
-					Flags:    event.Flags,
+					Path:  event.PathName,
+					Flags: event.Flags,
 				}
 				containerProfile.Opens = append(containerProfile.Opens, openEvent)
 			}
@@ -298,12 +297,36 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 	}
 }
 
-func openEventExists(path string, openEvents []OpenCalls) bool {
+func openEventExists(openEvent *tracing.OpenEvent, openEvents []OpenCalls) (bool, bool) {
+	hasSamePath := false
+	hasSameFlags := false
 	for _, element := range openEvents {
-		if element.Path == path {
-			return true
+		if element.Path == openEvent.PathName {
+			hasSamePath = true
+			hasAllFlags := true
+			for _, flag := range openEvent.Flags {
+				// Check if flag is in the flags of the openEvent
+				hasFlag := false
+				for _, flag2 := range element.Flags {
+					if flag == flag2 {
+						hasFlag = true
+						break
+					}
+				}
+				if !hasFlag {
+					hasAllFlags = false
+					break
+				}
+			}
+			if hasAllFlags {
+				hasSameFlags = true
+				break
+			}
+		}
+		if hasSamePath && hasSameFlags {
+			break
 		}
 	}
 
-	return false
+	return hasSamePath, hasSameFlags
 }

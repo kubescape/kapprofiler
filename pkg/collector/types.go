@@ -34,10 +34,8 @@ type NetworkActivity struct {
 }
 
 type OpenCalls struct {
-	Path     string   `json:"path" yaml:"path"`
-	TaskName string   `json:"process" yaml:"process"`
-	TaskId   int      `json:"pid" yaml:"pid"`
-	Flags    []string `json:"flags" yaml:"flags"`
+	Path  string   `json:"path" yaml:"path"`
+	Flags []string `json:"flags" yaml:"flags"`
 }
 
 type ContainerProfile struct {
