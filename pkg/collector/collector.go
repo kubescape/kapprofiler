@@ -9,6 +9,7 @@ import (
 	"log"
 	"time"
 
+	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -140,8 +141,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		capabilitiesEvents, err := cm.eventSink.GetCapabilitiesEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting capabilities events: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 {
+		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
 			return
 		}
 
@@ -158,6 +165,37 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				Args: event.Args,
 				Envs: event.Env,
 			})
+		}
+		//interstingCapabilities := []string{"setpcap", "sysmodule", "net_raw", "net_admin", "sys_admin", "sys_rawio", "sys_ptrace", "sys_boot", "mac_override", "mac_admin", "perfmon", "all", "bpf"}
+		// Add capabilities events to container profile
+		for _, event := range capabilitiesEvents {
+			// TODO: check if event is already in containerProfile.Capabilities
+			//if slices.Contains(interstingCapabilities, event.CapabilityName) {
+			if len(containerProfile.Capabilities) == 0 {
+				containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+					Capabilities: []string{event.CapabilityName},
+					Syscall:      event.Syscall,
+				})
+			} else {
+				for _, capability := range containerProfile.Capabilities {
+					if capability.Syscall == event.Syscall {
+						if !slices.Contains(capability.Capabilities, event.CapabilityName) {
+							capability.Capabilities = append(capability.Capabilities, event.CapabilityName)
+						}
+					} else {
+						var syscalls []string
+						for _, cap := range containerProfile.Capabilities {
+							syscalls = append(syscalls, cap.Syscall)
+						}
+						if !slices.Contains(syscalls, event.Syscall) {
+							containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+								Capabilities: []string{event.CapabilityName},
+								Syscall:      event.Syscall,
+							})
+						}
+					}
+				}
+			}
 		}
 
 		// Add open events to container profile

@@ -4,6 +4,8 @@ import (
 	"log"
 
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
+	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
+	tracercapabilitiestype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/types"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
@@ -17,6 +19,7 @@ import (
 const execTraceName = "trace_exec"
 const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
+const capabilitiesTraceName = "trace_capabilities"
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -48,6 +51,36 @@ func (t *Tracer) startAppBehaviorTracing() error {
 		return err
 	}
 
+	// Start tracing capabilities
+	err = t.startCapabilitiesTracing()
+	if err != nil {
+		log.Printf("error starting capabilities tracing: %s\n", err)
+		return err
+	}
+
+	return nil
+}
+
+func (t *Tracer) startCapabilitiesTracing() error {
+	if err := t.tCollection.AddTracer(capabilitiesTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	// Get mount namespace map to filter by containers
+	capabilitiesMountnsmap, err := t.tCollection.TracerMountNsMap(capabilitiesTraceName)
+	if err != nil {
+		log.Printf("failed to get capabilitiesMountnsmap: %s\n", err)
+		return err
+	}
+
+	tracerCapabilities, err := tracercapabilities.NewTracer(&tracercapabilities.Config{MountnsMap: capabilitiesMountnsmap}, t.cCollection, t.capabilitiesEventCallback)
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	t.capabilitiesTracer = tracerCapabilities
+
 	return nil
 }
 
@@ -74,8 +107,22 @@ func (t *Tracer) startOpenTracing() error {
 	return nil
 }
 
+func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) {
+	if event.Type == eventtypes.NORMAL {
+		capabilitiesEvent := &CapabilitiesEvent{
+			ContainerID:    event.K8s.ContainerName,
+			PodName:        event.K8s.PodName,
+			Namespace:      event.K8s.Namespace,
+			Syscall:        event.Syscall,
+			CapabilityName: event.CapName,
+			Timestamp:      int64(event.Timestamp),
+		}
+		t.eventSink.SendCapabilitiesEvent(capabilitiesEvent)
+	}
+}
+
 func (t *Tracer) openEventCallback(event *traceropentype.Event) {
-	if (event.Type == eventtypes.NORMAL || event.Type == eventtypes.INFO) && event.Ret > -1 {
+	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
 		openEvent := &OpenEvent{
 			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,

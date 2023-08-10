@@ -24,6 +24,17 @@ spec:
                       type: array
                       items:
                         type: string
+                    capabilities:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          caps:
+                            type: array
+                            items:
+                              type: string
+                          syscall:
+                            type: string
                     execs:
                       type: array
                       items:
