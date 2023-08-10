@@ -81,3 +81,43 @@ var AppProfileGvr schema.GroupVersionResource = schema.GroupVersionResource{
 	Version:  ApplicationProfileVersion,
 	Resource: ApplicationProfilePlural,
 }
+
+func (a ExecCalls) Equals(b ExecCalls) bool {
+	if a.Path != b.Path {
+		return false
+	}
+	if len(a.Args) != len(b.Args) {
+		return false
+	}
+	for i, arg := range a.Args {
+		if arg != b.Args[i] {
+			return false
+		}
+	}
+	// TODO: compare envs
+	return true
+}
+
+func (a EnrichedTcpConnection) Equals(b EnrichedTcpConnection) bool {
+	if !a.RawConnection.Equals(b.RawConnection) {
+		return false
+	}
+	// TODO Pod selectors
+	return true
+}
+
+func (a RawTcpConnection) Equals(b RawTcpConnection) bool {
+	if a.SourceIp != b.SourceIp {
+		return false
+	}
+	if a.SourcePort != b.SourcePort {
+		return false
+	}
+	if a.DestIp != b.DestIp {
+		return false
+	}
+	if a.DestPort != b.DestPort {
+		return false
+	}
+	return true
+}

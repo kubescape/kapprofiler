@@ -3,7 +3,10 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"kapprofiler/pkg/collector"
+	"log"
+	"strings"
 
 	"golang.org/x/exp/slices"
 
@@ -82,15 +85,21 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 		return
 	}
 
+	// Get Object name from ApplicationProfile. Application profile name has the kind in as the the prefix like deployment-nginx
+	objectName := strings.Join(strings.Split(applicationProfile.ObjectMeta.Name, "-")[1:], "-")
+	//kind := strings.Split(applicationProfile.ObjectMeta.Name, "-")[0]
+
 	// Get pod to which the ApplicationProfile belongs to
-	pod, err := c.staticClient.CoreV1().Pods(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), applicationProfile.ObjectMeta.Name, metav1.GetOptions{})
+	pod, err := c.staticClient.CoreV1().Pods(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), objectName, metav1.GetOptions{})
 	if err != nil { // Ensures that the ApplicationProfile belongs to a pod or a replicaset
-		replicaSet, err := c.staticClient.AppsV1().ReplicaSets(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), applicationProfile.ObjectMeta.Name, metav1.GetOptions{})
+		replicaSet, err := c.staticClient.AppsV1().ReplicaSets(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), objectName, metav1.GetOptions{})
 		if err != nil { // ApplicationProfile belongs to neither
 			return
 		}
-		if replicaSet.OwnerReferences[0].Kind == "Deployment" { // If owner of replicaset is a deployment
-			_, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Get(context.TODO(), replicaSet.OwnerReferences[0].Name, metav1.GetOptions{})
+
+		if len(replicaSet.OwnerReferences) > 0 && replicaSet.OwnerReferences[0].Kind == "Deployment" { // If owner of replicaset is a deployment
+			profileName := fmt.Sprintf("deployment-%v", replicaSet.OwnerReferences[0].Name)
+			_, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Get(context.TODO(), profileName, metav1.GetOptions{})
 			if err != nil { // ApplicationProfile doesn't exist for deployment
 				deploymentApplicationProfile := &collector.ApplicationProfile{
 					TypeMeta: metav1.TypeMeta{
@@ -98,7 +107,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 						APIVersion: collector.ApplicationProfileApiVersion,
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name: replicaSet.OwnerReferences[0].Name,
+						Name: profileName,
 					},
 					Spec: collector.ApplicationProfileSpec{
 						Containers: applicationProfile.Spec.Containers,
@@ -116,18 +125,25 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 				deploymentApplicationProfile := &collector.ApplicationProfile{}
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
-				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), replicaSet.OwnerReferences[0].Name, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
+				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
 				if err != nil {
 					return
 				}
 			}
 		} else {
+			log.Printf("ApplicationProfile %v doesn't belong to a deployment", applicationProfile.ObjectMeta.Name)
 			return
 		}
 	}
 
 	var podControllerName string
+	var podControllerKind string
 	var pods *v1.PodList
+
+	// Skip if the pod has no owner
+	if len(pod.OwnerReferences) == 0 {
+		return
+	}
 
 	// Figure out pod controller of given pod and get all pods under that controller
 	switch pod.OwnerReferences[0].Kind {
@@ -141,6 +157,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 			return
 		}
 		podControllerName = replicaSet.GetName()
+		podControllerKind = "replicaset"
 	case "DaemonSet":
 		daemonSet, err := c.staticClient.AppsV1().DaemonSets(pod.Namespace).Get(context.TODO(), pod.OwnerReferences[0].Name, metav1.GetOptions{})
 		if err != nil {
@@ -151,6 +168,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 			return
 		}
 		podControllerName = daemonSet.GetName()
+		podControllerKind = "daemonset"
 	case "StatefulSet":
 		statefulSet, err := c.staticClient.AppsV1().StatefulSets(pod.Namespace).Get(context.TODO(), pod.OwnerReferences[0].Name, metav1.GetOptions{})
 		if err != nil {
@@ -161,18 +179,22 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 			return
 		}
 		podControllerName = statefulSet.GetName()
+		podControllerKind = "statefulset"
 	}
 
-	var containersMap map[string]collector.ContainerProfile
+	containersMap := make(map[string]collector.ContainerProfile)
 
 	// Merge all the container information of all the pods
 	for _, pod := range pods.Items {
-		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.GetNamespace()).Get(context.TODO(), pod.GetName(), metav1.GetOptions{})
+		appProfileNameForPod := fmt.Sprintf("pod-%s", pod.GetName())
+		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.GetNamespace()).Get(context.TODO(), appProfileNameForPod, metav1.GetOptions{})
 		if err != nil {
+			log.Printf("ApplicationProfile for pod %v doesn't exist", pod.GetName())
 			return
 		}
 		podApplicationProfileObj, err := c.getApplicationProfileFromObj(typedObj)
 		if err != nil {
+			log.Printf("ApplicationProfile for pod %v doesn't exist", pod.GetName())
 			return
 		}
 
@@ -188,19 +210,40 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 
 				// Merge Execs
 				for _, exec := range container.Execs {
-					if !slices.Contains(mapContainer.Execs, exec) {
+					contains := false
+					for _, mapExec := range mapContainer.Execs {
+						if mapExec.Equals(exec) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
 						mapContainer.Execs = append(mapContainer.Execs, exec)
 					}
 				}
 
 				// Merge Network Activity
 				for _, in := range container.NetworkActivity.Incoming.TcpConnections {
-					if !slices.Contains(mapContainer.NetworkActivity.Incoming.TcpConnections, in) {
+					contains := false
+					for _, mapIn := range mapContainer.NetworkActivity.Incoming.TcpConnections {
+						if mapIn.Equals(in) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
 						mapContainer.NetworkActivity.Incoming.TcpConnections = append(mapContainer.NetworkActivity.Incoming.TcpConnections, in)
 					}
 				}
 				for _, out := range container.NetworkActivity.Outgoing.TcpConnections {
-					if !slices.Contains(mapContainer.NetworkActivity.Outgoing.TcpConnections, out) {
+					contains := false
+					for _, mapOut := range mapContainer.NetworkActivity.Outgoing.TcpConnections {
+						if mapOut.Equals(out) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
 						mapContainer.NetworkActivity.Outgoing.TcpConnections = append(mapContainer.NetworkActivity.Outgoing.TcpConnections, out)
 					}
 				}
@@ -217,8 +260,9 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 		containers = append(containers, container)
 	}
 
+	applicationProfileNameForController := fmt.Sprintf("%s-%s", podControllerKind, podControllerName)
 	// Fetch ApplicationProfile of the controller
-	_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Get(context.TODO(), podControllerName, metav1.GetOptions{})
+	_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Get(context.TODO(), applicationProfileNameForController, metav1.GetOptions{})
 	if err != nil { // ApplicationProfile of controller doesn't exist so create a new one
 		controllerApplicationProfile := &collector.ApplicationProfile{
 			TypeMeta: metav1.TypeMeta{
@@ -226,7 +270,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 				APIVersion: collector.ApplicationProfileApiVersion,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: podControllerName,
+				Name: applicationProfileNameForController,
 			},
 			Spec: collector.ApplicationProfileSpec{
 				Containers: containers,
@@ -234,18 +278,21 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 		}
 		controllerApplicationProfileRaw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(controllerApplicationProfile)
 		if err != nil {
+			log.Printf("Error converting ApplicationProfile of controller %v", err)
 			return
 		}
 		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Create(context.TODO(), &unstructured.Unstructured{Object: controllerApplicationProfileRaw}, metav1.CreateOptions{})
 		if err != nil {
+			log.Printf("Error creating ApplicationProfile of controller %v", err)
 			return
 		}
 	} else { // ApplicationProfile of controller exists so update it
 		controllerApplicationProfile := &collector.ApplicationProfile{}
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
-		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), podControllerName, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})
+		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})
 		if err != nil {
+			log.Printf("Error updating ApplicationProfile of controller %v", err)
 			return
 		}
 	}
