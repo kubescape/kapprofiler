@@ -24,6 +24,17 @@ spec:
                       type: array
                       items:
                         type: string
+                    capabilities:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          caps:
+                            type: array
+                            items:
+                              type: string
+                          syscall:
+                            type: string
                     execs:
                       type: array
                       items:
@@ -41,6 +52,21 @@ spec:
                             type: string
                     name:
                       type: string
+                    opens:
+                     type: array
+                     items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        taskName:
+                          type: string
+                        taskId:
+                          type: integer
+                        flags:
+                          type: array
+                          items:
+                            type: string
                     networkActivity:
                       type: object
                       properties:

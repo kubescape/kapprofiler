@@ -38,6 +38,20 @@ spec:
       labels:
         k8s-app: kapprofiler
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - arm64
+                - amd64
       serviceAccount: kapprofiler
       hostPID: true
       hostNetwork: false

@@ -33,11 +33,23 @@ type NetworkActivity struct {
 	Outgoing ConnectionContainer `json:"outgoing" yaml:"outgoing"`
 }
 
+type OpenCalls struct {
+	Path  string   `json:"path" yaml:"path"`
+	Flags []string `json:"flags" yaml:"flags"`
+}
+
+type CapabilitiesCalls struct {
+	Capabilities []string `json:"caps" yaml:"caps"`
+	Syscall      string   `json:"syscall" yaml:"syscall"`
+}
+
 type ContainerProfile struct {
-	Name            string          `json:"name" yaml:"name"`
-	Execs           []ExecCalls     `json:"execs" yaml:"execs"`
-	NetworkActivity NetworkActivity `json:"networkActivity" yaml:"networkActivity"`
-	SysCalls        []string        `json:"syscalls" yaml:"syscalls"`
+	Name            string              `json:"name" yaml:"name"`
+	Execs           []ExecCalls         `json:"execs" yaml:"execs"`
+	Opens           []OpenCalls         `json:"opens" yaml:"opens"`
+	NetworkActivity NetworkActivity     `json:"networkActivity" yaml:"networkActivity"`
+	Capabilities    []CapabilitiesCalls `json:"capabilities" yaml:"capabilities"`
+	SysCalls        []string            `json:"syscalls" yaml:"syscalls"`
 }
 
 type ApplicationProfileSpec struct {

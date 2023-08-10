@@ -4,8 +4,12 @@ import (
 	"log"
 
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
+	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
+	tracercapabilitiestype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/types"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
+	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
+	traceropentype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/types"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracertcptype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/types"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
@@ -13,9 +17,9 @@ import (
 
 // Global constants
 const execTraceName = "trace_exec"
-
-// const openTraceName = "trace_open"
+const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
+const capabilitiesTraceName = "trace_capabilities"
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -40,15 +44,105 @@ func (t *Tracer) startAppBehaviorTracing() error {
 		return err
 	}
 
+	// Start tracing open
+	err = t.startOpenTracing()
+	if err != nil {
+		log.Printf("error starting open tracing: %s\n", err)
+		return err
+	}
+
+	// Start tracing capabilities
+	err = t.startCapabilitiesTracing()
+	if err != nil {
+		log.Printf("error starting capabilities tracing: %s\n", err)
+		return err
+	}
+
 	return nil
+}
+
+func (t *Tracer) startCapabilitiesTracing() error {
+	if err := t.tCollection.AddTracer(capabilitiesTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	// Get mount namespace map to filter by containers
+	capabilitiesMountnsmap, err := t.tCollection.TracerMountNsMap(capabilitiesTraceName)
+	if err != nil {
+		log.Printf("failed to get capabilitiesMountnsmap: %s\n", err)
+		return err
+	}
+
+	tracerCapabilities, err := tracercapabilities.NewTracer(&tracercapabilities.Config{MountnsMap: capabilitiesMountnsmap}, t.cCollection, t.capabilitiesEventCallback)
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	t.capabilitiesTracer = tracerCapabilities
+
+	return nil
+}
+
+func (t *Tracer) startOpenTracing() error {
+	if err := t.tCollection.AddTracer(openTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	// Get mount namespace map to filter by containers
+	openMountnsmap, err := t.tCollection.TracerMountNsMap(openTraceName)
+	if err != nil {
+		log.Printf("failed to get openMountnsmap: %s\n", err)
+		return err
+	}
+
+	tracerOpen, err := traceropen.NewTracer(&traceropen.Config{MountnsMap: openMountnsmap, FullPath: true}, t.cCollection, t.openEventCallback)
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	t.openTracer = tracerOpen
+
+	return nil
+}
+
+func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) {
+	if event.Type == eventtypes.NORMAL {
+		capabilitiesEvent := &CapabilitiesEvent{
+			ContainerID:    event.K8s.ContainerName,
+			PodName:        event.K8s.PodName,
+			Namespace:      event.K8s.Namespace,
+			Syscall:        event.Syscall,
+			CapabilityName: event.CapName,
+			Timestamp:      int64(event.Timestamp),
+		}
+		t.eventSink.SendCapabilitiesEvent(capabilitiesEvent)
+	}
+}
+
+func (t *Tracer) openEventCallback(event *traceropentype.Event) {
+	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
+		openEvent := &OpenEvent{
+			ContainerID: event.K8s.ContainerName,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
+			PathName:    event.FullPath,
+			TaskName:    event.Comm,
+			TaskId:      int(event.Pid),
+			Flags:       event.Flags,
+			Timestamp:   int64(event.Timestamp),
+		}
+		t.eventSink.SendOpenEvent(openEvent)
+	}
 }
 
 func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Retval > -1 {
 		execveEvent := &ExecveEvent{
-			ContainerID: event.Container,
-			PodName:     event.Pod,
-			Namespace:   event.Namespace,
+			ContainerID: event.K8s.ContainerName,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
 			PathName:    event.Args[0],
 			Args:        event.Args[1:],
 			Env:         []string{},
@@ -89,28 +183,28 @@ func (t *Tracer) tcpEventCallback(event *tracertcptype.Event) {
 
 		// If the operation is accept, then the source and destination are reversed (interesting why?)
 		if event.Operation == "accept" {
-			destPort = int(event.Sport)
-			dest = event.Saddr
+			destPort = int(event.SrcEndpoint.Port)
+			dest = event.SrcEndpoint.Addr
 			// Force it to be 0 for now to prevent feeding data which is not interesting
 			srcPort = 0
 			//srcPort = int(event.Dport)
-			src = event.Daddr
+			src = event.DstEndpoint.Addr
 		} else if event.Operation == "connect" {
-			destPort = int(event.Dport)
-			dest = event.Daddr
+			destPort = int(event.DstEndpoint.Port)
+			dest = event.DstEndpoint.Addr
 			// Force it to be 0 for now to prevent feeding data which is not interesting
 			srcPort = 0
 			//srcPort = int(event.Sport)
-			src = event.Saddr
+			src = event.SrcEndpoint.Addr
 		} else {
 			// Don't care about other operations
 			return
 		}
 
 		tcpEvent := &TcpEvent{
-			ContainerID: event.Container,
-			PodName:     event.Pod,
-			Namespace:   event.Namespace,
+			ContainerID: event.K8s.ContainerName,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
 			Source:      src,
 			SourcePort:  srcPort,
 			Destination: dest,

@@ -11,10 +11,12 @@ import (
 )
 
 type EventSink struct {
-	homeDir            string
-	fileDB             *bolt.DB
-	execveEventChannel chan *tracing.ExecveEvent
-	tcpEventChannel    chan *tracing.TcpEvent
+	homeDir                  string
+	fileDB                   *bolt.DB
+	execveEventChannel       chan *tracing.ExecveEvent
+	tcpEventChannel          chan *tracing.TcpEvent
+	openEventChannel         chan *tracing.OpenEvent
+	capabilitiesEventChannel chan *tracing.CapabilitiesEvent
 }
 
 func NewEventSink(homeDir string) (*EventSink, error) {
@@ -39,11 +41,23 @@ func (es *EventSink) Start() error {
 	// Create the channel for tcp events
 	es.tcpEventChannel = make(chan *tracing.TcpEvent, 10000)
 
+	// Create the channel for the open events
+	es.openEventChannel = make(chan *tracing.OpenEvent, 10000)
+
+	// Create the channel for the capabilities events
+	es.capabilitiesEventChannel = make(chan *tracing.CapabilitiesEvent, 10000)
+
 	// Start the execve event worker
 	go es.execveEventWorker()
 
 	// Start the tcp event worker
 	go es.tcpEventWorker()
+
+	// Start the open event worker
+	go es.openEventWorker()
+
+	// Start the capabilities event worker
+	go es.capabilitiesEventWorker()
 
 	return nil
 }
@@ -51,6 +65,15 @@ func (es *EventSink) Start() error {
 func (es *EventSink) Stop() error {
 	// Close the channel for execve events
 	close(es.execveEventChannel)
+
+	// Close the channel for tcp events
+	close(es.tcpEventChannel)
+
+	// Close the channel for open events
+	close(es.openEventChannel)
+
+	// Close the channel for capabilities events
+	close(es.capabilitiesEventChannel)
 
 	// Close the bolt database
 	err := es.fileDB.Close()
@@ -60,6 +83,64 @@ func (es *EventSink) Stop() error {
 
 	// Delete boltdb file
 	os.Remove(es.homeDir + "/execve-events.db")
+
+	return nil
+}
+
+func (es *EventSink) capabilitiesEventWorker() error {
+	for event := range es.capabilitiesEventChannel {
+		bucket := fmt.Sprintf("capabilities-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+			if err != nil {
+				log.Printf("error creating bucket: %s\n", err)
+				return err
+			}
+			sEvent, err := event.GobEncode()
+			if err != nil {
+				log.Printf("error encoding open event: %s\n", err)
+				return err
+			}
+			err = b.Put(sEvent, nil)
+			if err != nil {
+				log.Printf("error storing open event: %s\n", err)
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("error storing open event: %s\n", err)
+		}
+	}
+
+	return nil
+}
+
+func (es *EventSink) openEventWorker() error {
+	for event := range es.openEventChannel {
+		bucket := fmt.Sprintf("open-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+			if err != nil {
+				log.Printf("error creating bucket: %s\n", err)
+				return err
+			}
+			sEvent, err := event.GobEncode()
+			if err != nil {
+				log.Printf("error encoding open event: %s\n", err)
+				return err
+			}
+			err = b.Put(sEvent, nil)
+			if err != nil {
+				log.Printf("error storing open event: %s\n", err)
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("error storing open event: %s\n", err)
+		}
+	}
 
 	return nil
 }
@@ -142,7 +223,50 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 		}
 		return nil
 	})
+	bucket = fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
+	err = es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := tx.DeleteBucket([]byte(bucket))
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
+	bucket = fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
+	err = es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := tx.DeleteBucket([]byte(bucket))
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+
 	return err
+}
+
+func (es *EventSink) GetCapabilitiesEvents(namespace string, podName string, containerID string) ([]*tracing.CapabilitiesEvent, error) {
+	bucket := fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
+	var events []*tracing.CapabilitiesEvent
+	err := es.fileDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			return nil
+		}
+		b.ForEach(func(k, v []byte) error {
+			event := &tracing.CapabilitiesEvent{}
+			err := event.GobDecode(k)
+			if err != nil {
+				return err
+			}
+			events = append(events, event)
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return events, nil
 }
 
 func (es *EventSink) GetExecveEvents(namespace string, podName string, containerID string) ([]*tracing.ExecveEvent, error) {
@@ -195,12 +319,45 @@ func (es *EventSink) GetTcpEvents(namespace string, podName string, containerID 
 	return events, nil
 }
 
+func (es *EventSink) GetOpenEvents(namespace string, podName string, containerID string) ([]*tracing.OpenEvent, error) {
+	bucket := fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
+	var events []*tracing.OpenEvent
+	err := es.fileDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil {
+			return nil
+		}
+		b.ForEach(func(k, v []byte) error {
+			event := &tracing.OpenEvent{}
+			err := event.GobDecode(k)
+			if err != nil {
+				return err
+			}
+			events = append(events, event)
+			return nil
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
 func (es *EventSink) SendExecveEvent(event *tracing.ExecveEvent) {
 	es.execveEventChannel <- event
 }
 
 func (es *EventSink) SendTcpEvent(event *tracing.TcpEvent) {
 	es.tcpEventChannel <- event
+}
+
+func (es *EventSink) SendOpenEvent(event *tracing.OpenEvent) {
+	es.openEventChannel <- event
+}
+
+func (es *EventSink) SendCapabilitiesEvent(event *tracing.CapabilitiesEvent) {
+	es.capabilitiesEventChannel <- event
 }
 
 func (es *EventSink) Close() error {

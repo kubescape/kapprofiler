@@ -9,6 +9,7 @@ import (
 	"log"
 	"time"
 
+	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -122,6 +123,12 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		openEvents, err := cm.eventSink.GetOpenEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting open events: %s\n", err)
+			return
+		}
+
 		tcpEvents, err := cm.eventSink.GetTcpEvents(id.Namespace, id.PodName, id.Container)
 		if err != nil {
 			log.Printf("error getting tcp events: %s\n", err)
@@ -134,8 +141,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		capabilitiesEvents, err := cm.eventSink.GetCapabilitiesEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting capabilities events: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(syscallList) == 0 {
+		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
 			return
 		}
 
@@ -152,6 +165,50 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				Args: event.Args,
 				Envs: event.Env,
 			})
+		}
+		//interstingCapabilities := []string{"setpcap", "sysmodule", "net_raw", "net_admin", "sys_admin", "sys_rawio", "sys_ptrace", "sys_boot", "mac_override", "mac_admin", "perfmon", "all", "bpf"}
+		// Add capabilities events to container profile
+		for _, event := range capabilitiesEvents {
+			// TODO: check if event is already in containerProfile.Capabilities
+			//if slices.Contains(interstingCapabilities, event.CapabilityName) {
+			if len(containerProfile.Capabilities) == 0 {
+				containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+					Capabilities: []string{event.CapabilityName},
+					Syscall:      event.Syscall,
+				})
+			} else {
+				for _, capability := range containerProfile.Capabilities {
+					if capability.Syscall == event.Syscall {
+						if !slices.Contains(capability.Capabilities, event.CapabilityName) {
+							capability.Capabilities = append(capability.Capabilities, event.CapabilityName)
+						}
+					} else {
+						var syscalls []string
+						for _, cap := range containerProfile.Capabilities {
+							syscalls = append(syscalls, cap.Syscall)
+						}
+						if !slices.Contains(syscalls, event.Syscall) {
+							containerProfile.Capabilities = append(containerProfile.Capabilities, CapabilitiesCalls{
+								Capabilities: []string{event.CapabilityName},
+								Syscall:      event.Syscall,
+							})
+						}
+					}
+				}
+			}
+		}
+
+		// Add open events to container profile
+		for _, event := range openEvents {
+			hasSameFile, hasSameFlags := openEventExists(event, containerProfile.Opens)
+			// TODO: check if event is already in containerProfile.Opens & remove the 10000 limit.
+			if len(containerProfile.Opens) < 10000 && !(hasSameFile && hasSameFlags) {
+				openEvent := OpenCalls{
+					Path:  event.PathName,
+					Flags: event.Flags,
+				}
+				containerProfile.Opens = append(containerProfile.Opens, openEvent)
+			}
 		}
 
 		// Add network activity to container profile
@@ -276,4 +333,38 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			ContainerID: event.ContainerID,
 		})
 	}
+}
+
+func openEventExists(openEvent *tracing.OpenEvent, openEvents []OpenCalls) (bool, bool) {
+	hasSamePath := false
+	hasSameFlags := false
+	for _, element := range openEvents {
+		if element.Path == openEvent.PathName {
+			hasSamePath = true
+			hasAllFlags := true
+			for _, flag := range openEvent.Flags {
+				// Check if flag is in the flags of the openEvent
+				hasFlag := false
+				for _, flag2 := range element.Flags {
+					if flag == flag2 {
+						hasFlag = true
+						break
+					}
+				}
+				if !hasFlag {
+					hasAllFlags = false
+					break
+				}
+			}
+			if hasAllFlags {
+				hasSameFlags = true
+				break
+			}
+		}
+		if hasSamePath && hasSameFlags {
+			break
+		}
+	}
+
+	return hasSamePath, hasSameFlags
 }

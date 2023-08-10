@@ -6,7 +6,9 @@ import (
 
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
+	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
+	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 
@@ -34,9 +36,11 @@ type Tracer struct {
 	containerSelector containercollection.ContainerSelector
 
 	// IG tracers
-	execTracer    *tracerexec.Tracer
-	tcpTracer     *tracertcp.Tracer
-	syscallTracer *tracerseccomp.Tracer
+	execTracer         *tracerexec.Tracer
+	tcpTracer          *tracertcp.Tracer
+	syscallTracer      *tracerseccomp.Tracer
+	openTracer         *traceropen.Tracer
+	capabilitiesTracer *tracercapabilities.Tracer
 
 	// Trace event sink object
 	eventSink EventSink
@@ -150,7 +154,7 @@ func (t *Tracer) setupContainerCollection() error {
 
 	// Define the container selector for later use
 	if t.filterByLabel {
-		t.containerSelector.Labels = map[string]string{"kapprofiler/enabled": "true"}
+		t.containerSelector.K8s.PodLabels = map[string]string{"kapprofiler/enabled": "true"}
 	}
 
 	// Store the container collection instance
@@ -170,11 +174,11 @@ func (t *Tracer) stopContainerCollection() error {
 func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
 	if t.containerActivityListener != nil && len(t.containerActivityListener) > 0 {
 		activityEvent := &ContainerActivityEvent{
-			PodName:       notif.Container.Podname,
-			Namespace:     notif.Container.Namespace,
-			ContainerName: notif.Container.Name,
+			PodName:       notif.Container.K8s.PodName,
+			Namespace:     notif.Container.K8s.Namespace,
+			ContainerName: notif.Container.K8s.ContainerName,
 			NsMntId:       notif.Container.Mntns,
-			ContainerID:   notif.Container.ID,
+			ContainerID:   notif.Container.Runtime.ContainerID,
 		}
 		if notif.Type == containercollection.EventTypeAddContainer {
 			activityEvent.Activity = ContainerActivityEventStart
