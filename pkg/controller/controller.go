@@ -180,6 +180,31 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 		}
 		podControllerName = statefulSet.GetName()
 		podControllerKind = "statefulset"
+	case "CronJob":
+		cronJob, err := c.staticClient.BatchV1beta1().CronJobs(pod.Namespace).Get(context.TODO(), pod.OwnerReferences[0].Name, metav1.GetOptions{})
+		if err != nil {
+			return
+		}
+		pods, err = c.staticClient.CoreV1().Pods(pod.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: string(labels.Set(cronJob.Spec.JobTemplate.Spec.Template.Labels).AsSelector().String())})
+		if err != nil {
+			return
+		}
+		podControllerName = cronJob.GetName()
+		podControllerKind = "cronjob"
+	case "Job":
+		job, err := c.staticClient.BatchV1().Jobs(pod.Namespace).Get(context.TODO(), pod.OwnerReferences[0].Name, metav1.GetOptions{})
+		if err != nil {
+			return
+		}
+		pods, err = c.staticClient.CoreV1().Pods(pod.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: string(labels.Set(job.Spec.Template.Labels).AsSelector().String())})
+		if err != nil {
+			return
+		}
+		podControllerName = job.GetName()
+		podControllerKind = "job"
+	default:
+		// If the pod controller is not a replicaset, daemonset or statefulset, then skip
+		return
 	}
 
 	containersMap := make(map[string]collector.ContainerProfile)
