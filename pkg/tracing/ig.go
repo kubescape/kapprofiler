@@ -6,6 +6,8 @@ import (
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
 	tracercapabilitiestype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/types"
+	tracerdns "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/tracer"
+	tracerdnstype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/types"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
@@ -20,6 +22,7 @@ const execTraceName = "trace_exec"
 const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
 const capabilitiesTraceName = "trace_capabilities"
+const dnsTraceName = "trace_dns"
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -58,6 +61,13 @@ func (t *Tracer) startAppBehaviorTracing() error {
 		return err
 	}
 
+	// Start tracing dns
+	err = t.startDnsTracing()
+	if err != nil {
+		log.Printf("error starting dns tracing: %s\n", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -84,6 +94,23 @@ func (t *Tracer) startCapabilitiesTracing() error {
 	return nil
 }
 
+func (t *Tracer) startDnsTracing() error {
+	if err := t.tCollection.AddTracer(dnsTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	tracerDns, err := tracerdns.NewTracer()
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	tracerDns.SetEventHandler(t.dnsEventCallback)
+	t.dnsTracer = tracerDns
+
+	return nil
+}
+
 func (t *Tracer) startOpenTracing() error {
 	if err := t.tCollection.AddTracer(openTraceName, t.containerSelector); err != nil {
 		log.Printf("error adding tracer: %v\n", err)
@@ -105,6 +132,21 @@ func (t *Tracer) startOpenTracing() error {
 	t.openTracer = tracerOpen
 
 	return nil
+}
+
+func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
+	if event.Type == eventtypes.NORMAL {
+		dnsEvent := &DnsEvent{
+			ContainerID: event.K8s.ContainerName,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
+			DnsName:     event.DNSName,
+			Addresses:   event.Addresses,
+			Type:        event.PktType,
+			Timestamp:   int64(event.Timestamp),
+		}
+		t.eventSink.SendDnsEvent(dnsEvent)
+	}
 }
 
 func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) {
