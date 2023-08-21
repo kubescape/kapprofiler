@@ -43,12 +43,18 @@ type CapabilitiesCalls struct {
 	Syscall      string   `json:"syscall" yaml:"syscall"`
 }
 
+type DnsCalls struct {
+	DnsName   string   `json:"dnsName" yaml:"dnsName"`
+	Addresses []string `json:"addresses" yaml:"addresses"`
+}
+
 type ContainerProfile struct {
 	Name            string              `json:"name" yaml:"name"`
 	Execs           []ExecCalls         `json:"execs" yaml:"execs"`
 	Opens           []OpenCalls         `json:"opens" yaml:"opens"`
 	NetworkActivity NetworkActivity     `json:"networkActivity" yaml:"networkActivity"`
 	Capabilities    []CapabilitiesCalls `json:"capabilities" yaml:"capabilities"`
+	Dns             []DnsCalls          `json:"dns" yaml:"dns"`
 	SysCalls        []string            `json:"syscalls" yaml:"syscalls"`
 }
 

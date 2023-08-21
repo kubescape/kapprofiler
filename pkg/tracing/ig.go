@@ -2,6 +2,7 @@ package tracing
 
 import (
 	"log"
+	"os"
 
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
@@ -107,6 +108,11 @@ func (t *Tracer) startDnsTracing() error {
 	}
 	tracerDns.SetEventHandler(t.dnsEventCallback)
 	t.dnsTracer = tracerDns
+
+	if err := tracerDns.Attach(uint32(os.Getpid())); err != nil {
+		log.Printf("error attaching tracer: %s\n", err)
+		return err
+	}
 
 	return nil
 }
@@ -311,6 +317,18 @@ func (t *Tracer) stopAppBehaviorTracing() error {
 	if err = t.stopSystemcallTracing(); err != nil {
 		log.Printf("error stopping seccomp tracing: %s\n", err)
 	}
+	// Stop open tracer
+	if err = t.stopOpenTracing(); err != nil {
+		log.Printf("error stopping open tracing: %s\n", err)
+	}
+	// Stop capabilities tracer
+	if err = t.stopCapabilitiesTracing(); err != nil {
+		log.Printf("error stopping capabilities tracing: %s\n", err)
+	}
+	// Stop dns tracer
+	if err = t.stopDnsTracing(); err != nil {
+		log.Printf("error stopping dns tracing: %s\n", err)
+	}
 	return err
 }
 
@@ -321,6 +339,36 @@ func (t *Tracer) stopExecTracing() error {
 		return err
 	}
 	t.execTracer.Stop()
+	return nil
+}
+
+func (t *Tracer) stopDnsTracing() error {
+	// Stop dns tracer
+	if err := t.tCollection.RemoveTracer(dnsTraceName); err != nil {
+		log.Printf("error removing tracer: %s\n", err)
+		return err
+	}
+	t.dnsTracer.Detach(uint32(os.Getpid()))
+	return nil
+}
+
+func (t *Tracer) stopOpenTracing() error {
+	// Stop open tracer
+	if err := t.tCollection.RemoveTracer(openTraceName); err != nil {
+		log.Printf("error removing tracer: %s\n", err)
+		return err
+	}
+	t.openTracer.Stop()
+	return nil
+}
+
+func (t *Tracer) stopCapabilitiesTracing() error {
+	// Stop capabilities tracer
+	if err := t.tCollection.RemoveTracer(capabilitiesTraceName); err != nil {
+		log.Printf("error removing tracer: %s\n", err)
+		return err
+	}
+	t.capabilitiesTracer.Stop()
 	return nil
 }
 
