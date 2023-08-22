@@ -174,8 +174,10 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// Add dns events to container profile
+		log.Printf("dns events count: %v", len(dnsEvents))
 		for _, event := range dnsEvents {
 			if !dnsEventExists(event, containerProfile.Dns) {
+				log.Printf("Appending dns event: %v, %v\n", event.DnsName, event.Addresses)
 				containerProfile.Dns = append(containerProfile.Dns, DnsCalls{
 					DnsName:   event.DnsName,
 					Addresses: event.Addresses,
@@ -355,10 +357,11 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 func dnsEventExists(dnsEvent *tracing.DnsEvent, dnsCalls []DnsCalls) bool {
 	for _, call := range dnsCalls {
 		if dnsEvent.DnsName == call.DnsName {
+			log.Print("Event exists")
 			return true
 		}
 	}
-
+	log.Print("Event doesn't exists")
 	return false
 }
 

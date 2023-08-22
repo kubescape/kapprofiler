@@ -98,7 +98,7 @@ func (es *EventSink) Stop() error {
 }
 
 func (es *EventSink) dnsEventWorker() error {
-	for event := range es.capabilitiesEventChannel {
+	for event := range es.dnsEventChannel {
 		bucket := fmt.Sprintf("dns-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
 		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
@@ -434,6 +434,7 @@ func (es *EventSink) SendCapabilitiesEvent(event *tracing.CapabilitiesEvent) {
 }
 
 func (es *EventSink) SendDnsEvent(event *tracing.DnsEvent) {
+	log.Print("Inserting dns event")
 	es.dnsEventChannel <- event
 }
 

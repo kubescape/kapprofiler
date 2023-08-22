@@ -54,7 +54,7 @@ spec:
                 - amd64
       serviceAccount: kapprofiler
       hostPID: true
-      hostNetwork: false
+      hostNetwork: true
       containers:
       - name: kappprofiler
         terminationMessagePolicy: FallbackToLogsOnError

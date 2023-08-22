@@ -16,6 +16,7 @@ import (
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracertcptype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/types"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/utils/host"
 )
 
 // Global constants
@@ -101,6 +102,9 @@ func (t *Tracer) startDnsTracing() error {
 		return err
 	}
 
+	// Need to call host init (Bug in IG)
+	host.Init(host.Config{AutoMountFilesystems: true})
+
 	tracerDns, err := tracerdns.NewTracer()
 	if err != nil {
 		log.Printf("error creating tracer: %s\n", err)
@@ -141,16 +145,18 @@ func (t *Tracer) startOpenTracing() error {
 }
 
 func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
+	log.Printf("Sending dns event: %v", event.DNSName)
 	if event.Type == eventtypes.NORMAL {
+		log.Printf("Sending dns event: %v", event.DNSName)
 		dnsEvent := &DnsEvent{
 			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,
 			Namespace:   event.K8s.Namespace,
 			DnsName:     event.DNSName,
 			Addresses:   event.Addresses,
-			Type:        event.PktType,
 			Timestamp:   int64(event.Timestamp),
 		}
+		log.Printf("Sending dns event: %v", dnsEvent)
 		t.eventSink.SendDnsEvent(dnsEvent)
 	}
 }
@@ -349,6 +355,8 @@ func (t *Tracer) stopDnsTracing() error {
 		return err
 	}
 	t.dnsTracer.Detach(uint32(os.Getpid()))
+	t.dnsTracer.Close()
+
 	return nil
 }
 

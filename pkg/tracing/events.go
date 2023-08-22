@@ -74,7 +74,6 @@ type DnsEvent struct {
 	Namespace   string
 	DnsName     string
 	Addresses   []string
-	Type        string
 	Timestamp   int64
 }
 
@@ -91,7 +90,7 @@ type EventSink interface {
 	SendDnsEvent(event *DnsEvent)
 }
 
-// Encode/Decode functions for CapabilitiesEvent
+// Encode/Decode functions for DnsEvent
 func (event *DnsEvent) GobEncode() ([]byte, error) {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
@@ -108,9 +107,6 @@ func (event *DnsEvent) GobEncode() ([]byte, error) {
 		return nil, err
 	}
 	if err := encoder.Encode(event.Addresses); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.Type); err != nil {
 		return nil, err
 	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
@@ -135,9 +131,6 @@ func (event *DnsEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.Addresses); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.Type); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
