@@ -125,8 +125,8 @@ spec:
 
 Simple installation:
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/slashben/kapprofiler/main/etc/app-profile.crd.yaml
-kubectl apply -f https://raw.githubusercontent.com/slashben/kapprofiler/main/deployment/deployment.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubescape/kapprofiler/main/etc/app-profile.crd.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubescape/kapprofiler/main/deployment/deployment.yaml
 ```
 
 Voila 😉
