@@ -434,7 +434,6 @@ func (es *EventSink) SendCapabilitiesEvent(event *tracing.CapabilitiesEvent) {
 }
 
 func (es *EventSink) SendDnsEvent(event *tracing.DnsEvent) {
-	log.Print("Inserting dns event")
 	es.dnsEventChannel <- event
 }
 

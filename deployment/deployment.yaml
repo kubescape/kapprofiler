@@ -54,7 +54,7 @@ spec:
                 - amd64
       serviceAccount: kapprofiler
       hostPID: true
-      hostNetwork: true
+      hostNetwork: false
       containers:
       - name: kappprofiler
         terminationMessagePolicy: FallbackToLogsOnError
@@ -76,6 +76,9 @@ spec:
           capabilities:
             add:
               - SYS_ADMIN
+              - SYS_PTRACE
+              - NET_RAW
+              - NET_ADMIN
         volumeMounts:
         - name: host
           mountPath: /host

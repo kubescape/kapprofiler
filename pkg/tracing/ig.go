@@ -2,8 +2,8 @@ package tracing
 
 import (
 	"log"
-	"os"
 
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection/networktracer"
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
 	tracercapabilitiestype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/types"
@@ -97,13 +97,12 @@ func (t *Tracer) startCapabilitiesTracing() error {
 }
 
 func (t *Tracer) startDnsTracing() error {
+	host.Init(host.Config{AutoMountFilesystems: true})
+
 	if err := t.tCollection.AddTracer(dnsTraceName, t.containerSelector); err != nil {
 		log.Printf("error adding tracer: %v\n", err)
 		return err
 	}
-
-	// Need to call host init (Bug in IG)
-	host.Init(host.Config{AutoMountFilesystems: true})
 
 	tracerDns, err := tracerdns.NewTracer()
 	if err != nil {
@@ -111,10 +110,20 @@ func (t *Tracer) startDnsTracing() error {
 		return err
 	}
 	tracerDns.SetEventHandler(t.dnsEventCallback)
+
 	t.dnsTracer = tracerDns
 
-	if err := tracerDns.Attach(uint32(os.Getpid())); err != nil {
-		log.Printf("error attaching tracer: %s\n", err)
+	config := &networktracer.ConnectToContainerCollectionConfig[tracerdnstype.Event]{
+		Tracer:   t.dnsTracer,
+		Resolver: t.cCollection,
+		Selector: t.containerSelector,
+		Base:     tracerdnstype.Base,
+	}
+
+	_, err = networktracer.ConnectToContainerCollection(config)
+
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
 
@@ -145,9 +154,8 @@ func (t *Tracer) startOpenTracing() error {
 }
 
 func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
-	log.Printf("Sending dns event: %v", event.DNSName)
 	if event.Type == eventtypes.NORMAL {
-		log.Printf("Sending dns event: %v", event.DNSName)
+		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
 		dnsEvent := &DnsEvent{
 			ContainerID: event.K8s.ContainerName,
 			PodName:     event.K8s.PodName,
@@ -156,7 +164,6 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 			Addresses:   event.Addresses,
 			Timestamp:   int64(event.Timestamp),
 		}
-		log.Printf("Sending dns event: %v", dnsEvent)
 		t.eventSink.SendDnsEvent(dnsEvent)
 	}
 }
@@ -354,7 +361,7 @@ func (t *Tracer) stopDnsTracing() error {
 		log.Printf("error removing tracer: %s\n", err)
 		return err
 	}
-	t.dnsTracer.Detach(uint32(os.Getpid()))
+
 	t.dnsTracer.Close()
 
 	return nil
