@@ -76,6 +76,9 @@ spec:
           capabilities:
             add:
               - SYS_ADMIN
+              # - SYS_PTRACE
+              # - NET_RAW
+              - NET_ADMIN
         volumeMounts:
         - name: host
           mountPath: /host

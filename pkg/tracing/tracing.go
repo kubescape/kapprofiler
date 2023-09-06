@@ -7,6 +7,7 @@ import (
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
+	tracerdns "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/tracer"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
@@ -40,6 +41,7 @@ type Tracer struct {
 	tcpTracer          *tracertcp.Tracer
 	syscallTracer      *tracerseccomp.Tracer
 	openTracer         *traceropen.Tracer
+	dnsTracer          *tracerdns.Tracer
 	capabilitiesTracer *tracercapabilities.Tracer
 
 	// Trace event sink object

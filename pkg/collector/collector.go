@@ -147,8 +147,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		dnsEvents, err := cm.eventSink.GetDnsEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting dns events: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
+		if len(dnsEvents) == 0 && len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
 			return
 		}
 
@@ -166,6 +172,17 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				Envs: event.Env,
 			})
 		}
+
+		// Add dns events to container profile
+		for _, event := range dnsEvents {
+			if !dnsEventExists(event, containerProfile.Dns) {
+				containerProfile.Dns = append(containerProfile.Dns, DnsCalls{
+					DnsName:   event.DnsName,
+					Addresses: event.Addresses,
+				})
+			}
+		}
+
 		//interstingCapabilities := []string{"setpcap", "sysmodule", "net_raw", "net_admin", "sys_admin", "sys_rawio", "sys_ptrace", "sys_boot", "mac_override", "mac_admin", "perfmon", "all", "bpf"}
 		// Add capabilities events to container profile
 		for _, event := range capabilitiesEvents {
@@ -333,6 +350,23 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			ContainerID: event.ContainerID,
 		})
 	}
+}
+
+func dnsEventExists(dnsEvent *tracing.DnsEvent, dnsCalls []DnsCalls) bool {
+	for _, call := range dnsCalls {
+		if dnsEvent.DnsName == call.DnsName {
+			for _, address := range dnsEvent.Addresses {
+				if !slices.Contains(call.Addresses, address) {
+					call.Addresses = append(call.Addresses, address)
+					log.Print("Event exists, appending missing address")
+				}
+			}
+
+			return true
+		}
+	}
+
+	return false
 }
 
 func openEventExists(openEvent *tracing.OpenEvent, openEvents []OpenCalls) (bool, bool) {

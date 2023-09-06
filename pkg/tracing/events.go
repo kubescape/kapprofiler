@@ -68,6 +68,15 @@ type CapabilitiesEvent struct {
 	Timestamp      int64
 }
 
+type DnsEvent struct {
+	ContainerID string
+	PodName     string
+	Namespace   string
+	DnsName     string
+	Addresses   []string
+	Timestamp   int64
+}
+
 type EventSink interface {
 	// SendExecveEvent sends an execve event to the sink
 	SendExecveEvent(event *ExecveEvent)
@@ -77,6 +86,57 @@ type EventSink interface {
 	SendOpenEvent(event *OpenEvent)
 	// SendCapabilitiesEvent sends a Capabilities event to the sink
 	SendCapabilitiesEvent(event *CapabilitiesEvent)
+	// SendDnsEvent sends a Dns event to the sink
+	SendDnsEvent(event *DnsEvent)
+}
+
+// Encode/Decode functions for DnsEvent
+func (event *DnsEvent) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerID); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.PodName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Namespace); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.DnsName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Addresses); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Timestamp); err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
+func (event *DnsEvent) GobDecode(buf []byte) error {
+	r := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerID); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.PodName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Namespace); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.DnsName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Addresses); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Timestamp); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Encode/Decode functions for CapabilitiesEvent

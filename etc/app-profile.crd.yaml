@@ -24,6 +24,17 @@ spec:
                       type: array
                       items:
                         type: string
+                    dns:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          dnsName:
+                            type: string
+                          addresses:
+                            type: array
+                            items:
+                              type: string
                     capabilities:
                       type: array
                       items:
