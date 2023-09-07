@@ -233,7 +233,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		var incomingConnections []NetworkCalls
 		for _, networkEvent := range networkEvents {
 			if networkEvent.PacketType == "OUTGOING" {
-				if !networkEventExists(networkEvent, containerProfile.NetworkActivity.Outgoing) {
+				if !networkEventExists(networkEvent, outgoingConnections) {
 					outgoingConnections = append(outgoingConnections, NetworkCalls{
 						Protocol:    networkEvent.Protocol,
 						Port:        networkEvent.Port,
@@ -241,7 +241,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 					})
 				}
 			} else if networkEvent.PacketType == "HOST" {
-				if !networkEventExists(networkEvent, containerProfile.NetworkActivity.Incoming) {
+				if !networkEventExists(networkEvent, incomingConnections) {
 					incomingConnections = append(incomingConnections, NetworkCalls{
 						Protocol:    networkEvent.Protocol,
 						Port:        networkEvent.Port,

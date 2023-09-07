@@ -12,7 +12,6 @@ type ExecCalls struct {
 }
 
 type NetworkCalls struct {
-	PacketType  string `json:"packetType" yaml:"packetType"`
 	Protocol    string `json:"protocol" yaml:"protocol"`
 	Port        uint16 `json:"port" yaml:"port"`
 	DstEndpoint string `json:"dstEndpoint" yaml:"dstEndpoint"`
