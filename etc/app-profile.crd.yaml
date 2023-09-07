@@ -35,6 +35,19 @@ spec:
                             type: array
                             items:
                               type: string
+                    network:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          port:
+                            type: integer
+                          protocol:
+                            type: string
+                          dstEndpoint:
+                            type: string
+                          packetType:
+                            type: string
                     capabilities:
                       type: array
                       items:
