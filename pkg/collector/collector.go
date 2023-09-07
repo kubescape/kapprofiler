@@ -153,8 +153,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
+		networkEvents, err := cm.eventSink.GetNetworkEvents(id.Namespace, id.PodName, id.Container)
+		if err != nil {
+			log.Printf("error getting network events: %s\n", err)
+			return
+		}
+
 		// If there are no events, return
-		if len(dnsEvents) == 0 && len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
+		if len(networkEvents) == 0 && len(dnsEvents) == 0 && len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
 			return
 		}
 
@@ -179,6 +185,18 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				containerProfile.Dns = append(containerProfile.Dns, DnsCalls{
 					DnsName:   event.DnsName,
 					Addresses: event.Addresses,
+				})
+			}
+		}
+
+		// Add network events to container profile
+		for _, event := range networkEvents {
+			if !networkEventExists(event, containerProfile.Network) {
+				containerProfile.Network = append(containerProfile.Network, NetworkCalls{
+					PacketType:  event.PacketType,
+					Protocol:    event.Protocol,
+					Port:        event.Port,
+					DstEndpoint: event.DstEndpoint,
 				})
 			}
 		}
@@ -350,6 +368,16 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			ContainerID: event.ContainerID,
 		})
 	}
+}
+
+func networkEventExists(networkEvent *tracing.NetworkEvent, networkCalls []NetworkCalls) bool {
+	for _, call := range networkCalls {
+		if networkEvent.DstEndpoint == call.DstEndpoint && networkEvent.Port == call.Port && networkEvent.Protocol == call.Protocol {
+			return true
+		}
+	}
+
+	return false
 }
 
 func dnsEventExists(dnsEvent *tracing.DnsEvent, dnsCalls []DnsCalls) bool {

@@ -48,6 +48,13 @@ type DnsCalls struct {
 	Addresses []string `json:"addresses" yaml:"addresses"`
 }
 
+type NetworkCalls struct {
+	PacketType  string `json:"packetType" yaml:"packetType"`
+	Protocol    string `json:"protocol" yaml:"protocol"`
+	Port        uint16 `json:"port" yaml:"port"`
+	DstEndpoint string `json:"dstEndpoint" yaml:"dstEndpoint"`
+}
+
 type ContainerProfile struct {
 	Name            string              `json:"name" yaml:"name"`
 	Execs           []ExecCalls         `json:"execs" yaml:"execs"`
@@ -55,6 +62,7 @@ type ContainerProfile struct {
 	NetworkActivity NetworkActivity     `json:"networkActivity" yaml:"networkActivity"`
 	Capabilities    []CapabilitiesCalls `json:"capabilities" yaml:"capabilities"`
 	Dns             []DnsCalls          `json:"dns" yaml:"dns"`
+	Network         []NetworkCalls      `json:"network" yaml:"network"`
 	SysCalls        []string            `json:"syscalls" yaml:"syscalls"`
 }
 
