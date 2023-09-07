@@ -129,12 +129,6 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			return
 		}
 
-		tcpEvents, err := cm.eventSink.GetTcpEvents(id.Namespace, id.PodName, id.Container)
-		if err != nil {
-			log.Printf("error getting tcp events: %s\n", err)
-			return
-		}
-
 		syscallList, err := cm.tracer.PeekSyscallInContainer(id.NsMntId)
 		if err != nil {
 			log.Printf("error getting syscall list: %s\n", err)
@@ -160,7 +154,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// If there are no events, return
-		if len(networkEvents) == 0 && len(dnsEvents) == 0 && len(execveEvents) == 0 && len(tcpEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
+		if len(networkEvents) == 0 && len(dnsEvents) == 0 && len(execveEvents) == 0 && len(openEvents) == 0 && len(syscallList) == 0 && len(capabilitiesEvents) == 0 {
 			return
 		}
 
@@ -185,18 +179,6 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				containerProfile.Dns = append(containerProfile.Dns, DnsCalls{
 					DnsName:   event.DnsName,
 					Addresses: event.Addresses,
-				})
-			}
-		}
-
-		// Add network events to container profile
-		for _, event := range networkEvents {
-			if !networkEventExists(event, containerProfile.Network) {
-				containerProfile.Network = append(containerProfile.Network, NetworkCalls{
-					PacketType:  event.PacketType,
-					Protocol:    event.Protocol,
-					Port:        event.Port,
-					DstEndpoint: event.DstEndpoint,
 				})
 			}
 		}
@@ -247,37 +229,31 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// Add network activity to container profile
-		var outgoingTcpConnections []EnrichedTcpConnection
-		var incomingTcpConnections []EnrichedTcpConnection
-		for _, tcpEvent := range tcpEvents {
-			if tcpEvent.Operation == "connect" {
-				outgoingTcpConnections = append(outgoingTcpConnections, EnrichedTcpConnection{
-					RawConnection: RawTcpConnection{
-						SourceIp:   tcpEvent.Source,
-						SourcePort: tcpEvent.SourcePort,
-						DestIp:     tcpEvent.Destination,
-						DestPort:   tcpEvent.DestPort,
-					},
-				})
-			} else if tcpEvent.Operation == "accept" {
-				incomingTcpConnections = append(incomingTcpConnections, EnrichedTcpConnection{
-					RawConnection: RawTcpConnection{
-						SourceIp:   tcpEvent.Source,
-						SourcePort: tcpEvent.SourcePort,
-						DestIp:     tcpEvent.Destination,
-						DestPort:   tcpEvent.DestPort,
-					},
-				})
+		var outgoingConnections []NetworkCalls
+		var incomingConnections []NetworkCalls
+		for _, networkEvent := range networkEvents {
+			if networkEvent.PacketType == "OUTGOING" {
+				if !networkEventExists(networkEvent, containerProfile.NetworkActivity.Outgoing) {
+					outgoingConnections = append(outgoingConnections, NetworkCalls{
+						Protocol:    networkEvent.Protocol,
+						Port:        networkEvent.Port,
+						DstEndpoint: networkEvent.DstEndpoint,
+					})
+				}
+			} else if networkEvent.PacketType == "HOST" {
+				if !networkEventExists(networkEvent, containerProfile.NetworkActivity.Incoming) {
+					incomingConnections = append(incomingConnections, NetworkCalls{
+						Protocol:    networkEvent.Protocol,
+						Port:        networkEvent.Port,
+						DstEndpoint: networkEvent.DstEndpoint,
+					})
+				}
 			}
 		}
 
 		containerProfile.NetworkActivity = NetworkActivity{
-			Incoming: ConnectionContainer{
-				TcpConnections: incomingTcpConnections,
-			},
-			Outgoing: ConnectionContainer{
-				TcpConnections: outgoingTcpConnections,
-			},
+			Incoming: incomingConnections,
+			Outgoing: outgoingConnections,
 		}
 
 		// The name of the ApplicationProfile you're looking for.
@@ -372,7 +348,7 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 
 func networkEventExists(networkEvent *tracing.NetworkEvent, networkCalls []NetworkCalls) bool {
 	for _, call := range networkCalls {
-		if networkEvent.DstEndpoint == call.DstEndpoint && networkEvent.Port == call.Port && networkEvent.Protocol == call.Protocol && networkEvent.PacketType == call.PacketType {
+		if networkEvent.DstEndpoint == call.DstEndpoint && networkEvent.Port == call.Port && networkEvent.Protocol == call.Protocol {
 			return true
 		}
 	}

@@ -11,26 +11,16 @@ type ExecCalls struct {
 	Envs []string `json:"envs" yaml:"envs"`
 }
 
-type RawTcpConnection struct {
-	SourceIp   string `json:"sourceip" yaml:"sourceip"`
-	SourcePort int    `json:"sourceport" yaml:"sourceport"`
-	DestIp     string `json:"destip" yaml:"destip"`
-	DestPort   int    `json:"destport" yaml:"destport"`
-}
-
-type EnrichedTcpConnection struct {
-	RawConnection RawTcpConnection   `json:"rawconnection" yaml:"rawconnection"`
-	PodSelectors  []v1.LabelSelector `json:"podselectors" yaml:"podselectors"`
-}
-
-type ConnectionContainer struct {
-	// Enriched connections
-	TcpConnections []EnrichedTcpConnection `json:"tcpconnections" yaml:"tcpconnections"`
+type NetworkCalls struct {
+	PacketType  string `json:"packetType" yaml:"packetType"`
+	Protocol    string `json:"protocol" yaml:"protocol"`
+	Port        uint16 `json:"port" yaml:"port"`
+	DstEndpoint string `json:"dstEndpoint" yaml:"dstEndpoint"`
 }
 
 type NetworkActivity struct {
-	Incoming ConnectionContainer `json:"incoming" yaml:"incoming"`
-	Outgoing ConnectionContainer `json:"outgoing" yaml:"outgoing"`
+	Incoming []NetworkCalls `json:"incoming" yaml:"incoming"`
+	Outgoing []NetworkCalls `json:"outgoing" yaml:"outgoing"`
 }
 
 type OpenCalls struct {
@@ -48,13 +38,6 @@ type DnsCalls struct {
 	Addresses []string `json:"addresses" yaml:"addresses"`
 }
 
-type NetworkCalls struct {
-	PacketType  string `json:"packetType" yaml:"packetType"`
-	Protocol    string `json:"protocol" yaml:"protocol"`
-	Port        uint16 `json:"port" yaml:"port"`
-	DstEndpoint string `json:"dstEndpoint" yaml:"dstEndpoint"`
-}
-
 type ContainerProfile struct {
 	Name            string              `json:"name" yaml:"name"`
 	Execs           []ExecCalls         `json:"execs" yaml:"execs"`
@@ -62,7 +45,6 @@ type ContainerProfile struct {
 	NetworkActivity NetworkActivity     `json:"networkActivity" yaml:"networkActivity"`
 	Capabilities    []CapabilitiesCalls `json:"capabilities" yaml:"capabilities"`
 	Dns             []DnsCalls          `json:"dns" yaml:"dns"`
-	Network         []NetworkCalls      `json:"network" yaml:"network"`
 	SysCalls        []string            `json:"syscalls" yaml:"syscalls"`
 }
 
@@ -109,29 +91,5 @@ func (a ExecCalls) Equals(b ExecCalls) bool {
 		}
 	}
 	// TODO: compare envs
-	return true
-}
-
-func (a EnrichedTcpConnection) Equals(b EnrichedTcpConnection) bool {
-	if !a.RawConnection.Equals(b.RawConnection) {
-		return false
-	}
-	// TODO Pod selectors
-	return true
-}
-
-func (a RawTcpConnection) Equals(b RawTcpConnection) bool {
-	if a.SourceIp != b.SourceIp {
-		return false
-	}
-	if a.SourcePort != b.SourcePort {
-		return false
-	}
-	if a.DestIp != b.DestIp {
-		return false
-	}
-	if a.DestPort != b.DestPort {
-		return false
-	}
 	return true
 }

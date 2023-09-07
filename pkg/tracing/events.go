@@ -35,19 +35,6 @@ type ExecveEvent struct {
 	Timestamp   int64
 }
 
-type TcpEvent struct {
-	ContainerID string
-	PodName     string
-	Namespace   string
-	Source      string
-	SourcePort  int
-	Destination string
-	DestPort    int
-	Operation   string
-	IpvType     string
-	Timestamp   int64
-}
-
 type OpenEvent struct {
 	ContainerID string
 	PodName     string
@@ -91,8 +78,6 @@ type NetworkEvent struct {
 type EventSink interface {
 	// SendExecveEvent sends an execve event to the sink
 	SendExecveEvent(event *ExecveEvent)
-	// SendTcpEvent sends a TCP event to the sink
-	SendTcpEvent(event *TcpEvent)
 	// SendOpenEvent sends a OPEN event to the sink
 	SendOpenEvent(event *OpenEvent)
 	// SendCapabilitiesEvent sends a Capabilities event to the sink
@@ -373,67 +358,6 @@ func (event *ExecveEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
-		return err
-	}
-	return nil
-}
-
-// Encode/Decode functions for ExecveEvent
-func (event *TcpEvent) GobEncode() ([]byte, error) {
-	w := new(bytes.Buffer)
-	encoder := gob.NewEncoder(w)
-	if err := encoder.Encode(event.ContainerID); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.PodName); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.Namespace); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.Operation); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.Source); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.SourcePort); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.Destination); err != nil {
-		return nil, err
-	}
-	if err := encoder.Encode(event.DestPort); err != nil {
-		return nil, err
-	}
-	return w.Bytes(), nil
-}
-
-func (event *TcpEvent) GobDecode(buf []byte) error {
-	r := bytes.NewBuffer(buf)
-	decoder := gob.NewDecoder(r)
-	if err := decoder.Decode(&event.ContainerID); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.PodName); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.Namespace); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.Operation); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.Source); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.SourcePort); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.Destination); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&event.DestPort); err != nil {
 		return err
 	}
 	return nil

@@ -35,19 +35,6 @@ spec:
                             type: array
                             items:
                               type: string
-                    network:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          port:
-                            type: integer
-                          protocol:
-                            type: string
-                          dstEndpoint:
-                            type: string
-                          packetType:
-                            type: string
                     capabilities:
                       type: array
                       items:
@@ -95,79 +82,27 @@ spec:
                       type: object
                       properties:
                         incoming:
-                          type: object
-                          properties:
-                            tcpconnections:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  podselectors:
-                                    type: array
-                                    items:
-                                      type: object
-                                      properties:
-                                        matchExpressions:
-                                          type: array
-                                          items:
-                                            type: object
-                                            properties:
-                                              key:
-                                                type: string
-                                              operator:
-                                                type: string
-                                              values:
-                                                type: array
-                                                items:
-                                                  type: string
-                                  rawconnection:
-                                    type: object
-                                    properties:
-                                      destip:
-                                        type: string
-                                      destport:
-                                        type: integer
-                                      sourceip:
-                                        type: string
-                                      sourceport:
-                                        type: integer
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              port:
+                                type: integer
+                              protocol:
+                                type: string
+                              dstEndpoint:
+                                type: string
                         outgoing:
-                          type: object
-                          properties:
-                            tcpconnections:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  podselectors:
-                                    type: array
-                                    items:
-                                      type: object
-                                      properties:
-                                        matchExpressions:
-                                          type: array
-                                          items:
-                                            type: object
-                                            properties:
-                                              key:
-                                                type: string
-                                              operator:
-                                                type: string
-                                              values:
-                                                type: array
-                                                items:
-                                                  type: string
-                                  rawconnection:
-                                    type: object
-                                    properties:
-                                      destip:
-                                        type: string
-                                      destport:
-                                        type: integer
-                                      sourceip:
-                                        type: string
-                                      sourceport:
-                                        type: integer
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              port:
+                                type: integer
+                              protocol:
+                                type: string
+                              dstEndpoint:
+                                type: string
   scope: Namespaced
   names:
     plural: applicationprofiles

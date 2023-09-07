@@ -247,32 +247,6 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 					}
 				}
 
-				// Merge Network Activity
-				for _, in := range container.NetworkActivity.Incoming.TcpConnections {
-					contains := false
-					for _, mapIn := range mapContainer.NetworkActivity.Incoming.TcpConnections {
-						if mapIn.Equals(in) {
-							contains = true
-							break
-						}
-					}
-					if !contains {
-						mapContainer.NetworkActivity.Incoming.TcpConnections = append(mapContainer.NetworkActivity.Incoming.TcpConnections, in)
-					}
-				}
-				for _, out := range container.NetworkActivity.Outgoing.TcpConnections {
-					contains := false
-					for _, mapOut := range mapContainer.NetworkActivity.Outgoing.TcpConnections {
-						if mapOut.Equals(out) {
-							contains = true
-							break
-						}
-					}
-					if !contains {
-						mapContainer.NetworkActivity.Outgoing.TcpConnections = append(mapContainer.NetworkActivity.Outgoing.TcpConnections, out)
-					}
-				}
-
 				containersMap[container.Name] = mapContainer
 			} else {
 				containersMap[container.Name] = container

@@ -117,19 +117,6 @@ func TestCollectorBasic(t *testing.T) {
 		Timestamp:   0,
 	})
 
-	// Send TCP event
-	eventSink.SendTcpEvent(&tracing.TcpEvent{
-		ContainerID: containedID.Container,
-		PodName:     containedID.PodName,
-		Namespace:   containedID.Namespace,
-		Operation:   "connect",
-		Source:      "10.0.0.1",
-		SourcePort:  1234,
-		Destination: "10.0.0.2",
-		DestPort:    80,
-		Timestamp:   0,
-	})
-
 	// Let the event sink process the event
 	time.Sleep(1 * time.Second)
 
@@ -189,16 +176,6 @@ func TestCollectorBasic(t *testing.T) {
 	// Verify execve event
 	if appProfile.Spec.Containers[0].Execs[0].Path != "/bin/bash" {
 		t.Errorf("expected path name test, got %s\n", appProfile.Spec.Containers[0].Execs[0].Path)
-	}
-
-	// Verify length TCP events
-	if len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections) != 1 {
-		t.Errorf("expected 1 TCP event, got %d\n", len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections))
-	}
-
-	// Verify TCP event
-	if appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections[0].RawConnection.SourceIp != "10.0.0.1" {
-		t.Errorf("expected source 10.0.0.1, got %s\n", appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections[0].RawConnection.SourceIp)
 	}
 }
 
@@ -278,24 +255,6 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 		t.Errorf("expected path name test, got %s\n", appProfile.Spec.Containers[0].Execs[0].Path)
 	}
 
-	// Verify length TCP events
-	if len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections) != 0 {
-		t.Errorf("expected 0 TCP event, got %d\n", len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections))
-	}
-
-	// Send TCP event
-	eventSink.SendTcpEvent(&tracing.TcpEvent{
-		ContainerID: containedID.Container,
-		PodName:     containedID.PodName,
-		Namespace:   containedID.Namespace,
-		Operation:   "connect",
-		Source:      "10.0.0.1",
-		SourcePort:  1234,
-		Destination: "10.0.0.2",
-		DestPort:    80,
-		Timestamp:   0,
-	})
-
 	// Let the collector update the container profile
 	time.Sleep(3 * time.Second)
 
@@ -305,14 +264,8 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 		t.Fatalf("error getting container profile: %s\n", err)
 	}
 
-	// Verify length TCP events
-	if len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections) != 1 {
-		t.Errorf("expected 1 TCP event, got %d\n", len(appProfile.Spec.Containers[0].NetworkActivity.Outgoing.TcpConnections))
-	}
-
 	// Stop container
 	cm.ContainerStopped(containedID)
-
 }
 
 func deleteContainerProfile(k8sConfig *rest.Config, namespace string, pod string) error {
