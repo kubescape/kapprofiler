@@ -372,7 +372,7 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 
 func networkEventExists(networkEvent *tracing.NetworkEvent, networkCalls []NetworkCalls) bool {
 	for _, call := range networkCalls {
-		if networkEvent.DstEndpoint == call.DstEndpoint && networkEvent.Port == call.Port && networkEvent.Protocol == call.Protocol {
+		if networkEvent.DstEndpoint == call.DstEndpoint && networkEvent.Port == call.Port && networkEvent.Protocol == call.Protocol && networkEvent.PacketType == call.PacketType {
 			return true
 		}
 	}
