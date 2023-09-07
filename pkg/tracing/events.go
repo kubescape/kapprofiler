@@ -77,6 +77,17 @@ type DnsEvent struct {
 	Timestamp   int64
 }
 
+type NetworkEvent struct {
+	ContainerID string
+	PodName     string
+	Namespace   string
+	PacketType  string
+	Protocol    string
+	Port        uint16
+	DstEndpoint string
+	Timestamp   int64
+}
+
 type EventSink interface {
 	// SendExecveEvent sends an execve event to the sink
 	SendExecveEvent(event *ExecveEvent)
@@ -88,6 +99,69 @@ type EventSink interface {
 	SendCapabilitiesEvent(event *CapabilitiesEvent)
 	// SendDnsEvent sends a Dns event to the sink
 	SendDnsEvent(event *DnsEvent)
+	// SendNetworkEvent sends a Network event to the sink
+	SendNetworkEvent(event *NetworkEvent)
+}
+
+// Encode/Decode functions for NetowrkEvent
+func (event *NetworkEvent) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerID); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.PodName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Namespace); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.PacketType); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Protocol); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Port); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.DstEndpoint); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Timestamp); err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
+func (event *NetworkEvent) GobDecode(buf []byte) error {
+	r := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerID); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.PodName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Namespace); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.PacketType); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Protocol); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Port); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.DstEndpoint); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Timestamp); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Encode/Decode functions for DnsEvent

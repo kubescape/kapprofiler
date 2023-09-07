@@ -11,6 +11,8 @@ import (
 	tracerdnstype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/types"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
+	tracernetwork "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/tracer"
+	tracernetworktype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/types"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
 	traceropentype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/types"
 	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
@@ -25,6 +27,7 @@ const openTraceName = "trace_open"
 const tcpTraceName = "trace_tcp"
 const capabilitiesTraceName = "trace_capabilities"
 const dnsTraceName = "trace_dns"
+const networkTraceName = "trace_network"
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -67,6 +70,47 @@ func (t *Tracer) startAppBehaviorTracing() error {
 	err = t.startDnsTracing()
 	if err != nil {
 		log.Printf("error starting dns tracing: %s\n", err)
+		return err
+	}
+
+	// Start tracing network
+	err = t.startNetworkTracing()
+	if err != nil {
+		log.Printf("error starting network tracing: %s\n", err)
+		return err
+	}
+
+	return nil
+}
+
+func (t *Tracer) startNetworkTracing() error {
+	//host.Init(host.Config{AutoMountFilesystems: true})
+
+	if err := t.tCollection.AddTracer(networkTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	tracerNetwork, err := tracernetwork.NewTracer()
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	tracerNetwork.SetEventHandler(t.networkEventCallback)
+
+	t.networkTracer = tracerNetwork
+
+	config := &networktracer.ConnectToContainerCollectionConfig[tracernetworktype.Event]{
+		Tracer:   t.networkTracer,
+		Resolver: t.cCollection,
+		Selector: t.containerSelector,
+		Base:     tracernetworktype.Base,
+	}
+
+	_, err = networktracer.ConnectToContainerCollection(config)
+
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
 
@@ -165,6 +209,23 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 			Timestamp:   int64(event.Timestamp),
 		}
 		t.eventSink.SendDnsEvent(dnsEvent)
+	}
+}
+
+func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
+	if event.Type == eventtypes.NORMAL {
+		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
+		networkEvent := &NetworkEvent{
+			ContainerID: event.K8s.ContainerName,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
+			PacketType:  event.PktType,
+			Protocol:    event.Proto,
+			Port:        event.Port,
+			DstEndpoint: event.DstEndpoint.String(),
+			Timestamp:   int64(event.Timestamp),
+		}
+		t.eventSink.SendNetworkEvent(networkEvent)
 	}
 }
 
