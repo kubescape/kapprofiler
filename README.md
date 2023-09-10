@@ -19,9 +19,12 @@ Based on Kubernetes API, it enables to GitOps and easy transition of this inform
 ### Data collected
 
 * Execve events: the process starts with arguments
-* TCP connections: incoming and outgoing connection events (connect/accept)
+* File access: list of files that were opened in the container (and their access mode)
+* Network connections: incoming and outgoing connection events
+* DNS: DNS requests and responses by the container - *Right now limited because of [this](https://github.com/inspektor-gadget/inspektor-gadget/issues/2008) issue*
 * Syscalls: system calls the application uses
-* Files touched: list of files the containers are touching (and their access mode) - *yet to be implemented*
+* Linux capabilities requested by the containerized processes
+
 
 ### Example of an application profile
 
@@ -29,38 +32,133 @@ Based on Kubernetes API, it enables to GitOps and easy transition of this inform
 apiVersion: kubescape.io/v1
 kind: ApplicationProfile
 metadata:
-  name: pod-frontend-bfdf66596-rd4qn
+  creationTimestamp: "2023-09-10T06:42:24Z"
+  generation: 2
+  name: deployment-frontend
   namespace: hipster
+  resourceVersion: "142668"
+  uid: 8419da2a-0584-4be6-9a37-0efd0f2c7b97
 spec:
   containers:
-  - execs:
+  - capabilities:
+    - caps:
+      - NET_ADMIN
+      syscall: read
+    - caps:
+      - NET_ADMIN
+      syscall: openat
+    dns:
+    - dnsName: metadata.google.internal.
+    - dnsName: adservice.hipster.svc.cluster.local.
+    - dnsName: cartservice.hipster.svc.cluster.local.
+    - dnsName: checkoutservice.hipster.svc.cluster.local.
+    - dnsName: currencyservice.hipster.svc.cluster.local.
+    - dnsName: shippingservice.hipster.svc.cluster.local.
+    - dnsName: productcatalogservice.hipster.svc.cluster.local.
+    - dnsName: recommendationservice.hipster.svc.cluster.local.
+    execs:
     - path: /src/server
     name: server
     networkActivity:
       incoming:
-        tcpconnections:
-        - rawconnection:
-            destip: ::ffff:10.244.0.23
-            destport: 8080
-            sourceip: ::ffff:10.244.0.1
-            sourceport: 0
-        - rawconnection:
-            destip: ::ffff:10.244.0.23
-            destport: 8080
-            sourceip: ::ffff:10.244.0.22
-            sourceport: 0
+      - dstEndpoint: 10.244.0.1
+        port: 8080
+        protocol: tcp
+      - dstEndpoint: 10.244.0.109
+        port: 8080
+        protocol: tcp
       outgoing:
-        tcpconnections:
-        - rawconnection:
-            destip: 10.100.181.6
-            destport: 7000
-            sourceip: 10.244.0.23
-            sourceport: 0
-        - rawconnection:
-            destip: 10.109.45.84
-            destport: 7070
-            sourceip: 10.244.0.23
-            sourceport: 0
+      - dstEndpoint: 169.254.169.254
+        port: 80
+        protocol: tcp
+      - dstEndpoint: 10.97.13.57
+        port: 3550
+        protocol: tcp
+      - dstEndpoint: 10.96.112.73
+        port: 5050
+        protocol: tcp
+      - dstEndpoint: 10.97.138.113
+        port: 7000
+        protocol: tcp
+      - dstEndpoint: 10.102.37.192
+        port: 7070
+        protocol: tcp
+      - dstEndpoint: 10.108.166.241
+        port: 8080
+        protocol: tcp
+      - dstEndpoint: 10.108.135.173
+        port: 9555
+        protocol: tcp
+      - dstEndpoint: 10.103.31.34
+        port: 50051
+        protocol: tcp
+      - dstEndpoint: 10.96.0.10
+        port: 53
+        protocol: udp
+    opens:
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /etc/hosts
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/server
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /etc/resolv.conf
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /etc/nsswitch.conf
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/ad.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/cart.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/home.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/error.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/order.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/footer.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/header.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/product.html
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /proc/sys/net/core/somaxconn
+    - flags:
+      - O_RDONLY
+      - O_CLOEXEC
+      path: /src/templates/recommendations.html
+    - flags:
+      - O_RDONLY
+      path: /sys/kernel/mm/transparent_hugepage/hpage_pmd_size
     syscalls:
     - accept4
     - arch_prctl
