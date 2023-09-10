@@ -11,10 +11,10 @@ import (
 	tracerdnstype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/types"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
 	tracerexectype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/types"
+	tracernetwork "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/tracer"
+	tracernetworktype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/types"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
 	traceropentype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/types"
-	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
-	tracertcptype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/types"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/utils/host"
 )
@@ -22,9 +22,9 @@ import (
 // Global constants
 const execTraceName = "trace_exec"
 const openTraceName = "trace_open"
-const tcpTraceName = "trace_tcp"
 const capabilitiesTraceName = "trace_capabilities"
 const dnsTraceName = "trace_dns"
+const networkTraceName = "trace_network"
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -32,13 +32,6 @@ func (t *Tracer) startAppBehaviorTracing() error {
 	err := t.startExecTracing()
 	if err != nil {
 		log.Printf("error starting exec tracing: %s\n", err)
-		return err
-	}
-
-	// Start tracing tcp
-	err = t.startTcpTracing()
-	if err != nil {
-		log.Printf("error starting tcp tracing: %s\n", err)
 		return err
 	}
 
@@ -67,6 +60,47 @@ func (t *Tracer) startAppBehaviorTracing() error {
 	err = t.startDnsTracing()
 	if err != nil {
 		log.Printf("error starting dns tracing: %s\n", err)
+		return err
+	}
+
+	// Start tracing network
+	err = t.startNetworkTracing()
+	if err != nil {
+		log.Printf("error starting network tracing: %s\n", err)
+		return err
+	}
+
+	return nil
+}
+
+func (t *Tracer) startNetworkTracing() error {
+	//host.Init(host.Config{AutoMountFilesystems: true})
+
+	if err := t.tCollection.AddTracer(networkTraceName, t.containerSelector); err != nil {
+		log.Printf("error adding tracer: %v\n", err)
+		return err
+	}
+
+	tracerNetwork, err := tracernetwork.NewTracer()
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+	tracerNetwork.SetEventHandler(t.networkEventCallback)
+
+	t.networkTracer = tracerNetwork
+
+	config := &networktracer.ConnectToContainerCollectionConfig[tracernetworktype.Event]{
+		Tracer:   t.networkTracer,
+		Resolver: t.cCollection,
+		Selector: t.containerSelector,
+		Base:     tracernetworktype.Base,
+	}
+
+	_, err = networktracer.ConnectToContainerCollection(config)
+
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
 
@@ -168,6 +202,23 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 	}
 }
 
+func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
+	if event.Type == eventtypes.NORMAL {
+		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
+		networkEvent := &NetworkEvent{
+			ContainerID: event.K8s.ContainerName,
+			PodName:     event.K8s.PodName,
+			Namespace:   event.K8s.Namespace,
+			PacketType:  event.PktType,
+			Protocol:    event.Proto,
+			Port:        event.Port,
+			DstEndpoint: event.DstEndpoint.String(),
+			Timestamp:   int64(event.Timestamp),
+		}
+		t.eventSink.SendNetworkEvent(networkEvent)
+	}
+}
+
 func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		capabilitiesEvent := &CapabilitiesEvent{
@@ -237,73 +288,6 @@ func (t *Tracer) startExecTracing() error {
 	return nil
 }
 
-func (t *Tracer) tcpEventCallback(event *tracertcptype.Event) {
-	if event.Type == eventtypes.NORMAL {
-		var src, dest string
-		var srcPort, destPort int
-
-		// If the operation is accept, then the source and destination are reversed (interesting why?)
-		if event.Operation == "accept" {
-			destPort = int(event.SrcEndpoint.Port)
-			dest = event.SrcEndpoint.Addr
-			// Force it to be 0 for now to prevent feeding data which is not interesting
-			srcPort = 0
-			//srcPort = int(event.Dport)
-			src = event.DstEndpoint.Addr
-		} else if event.Operation == "connect" {
-			destPort = int(event.DstEndpoint.Port)
-			dest = event.DstEndpoint.Addr
-			// Force it to be 0 for now to prevent feeding data which is not interesting
-			srcPort = 0
-			//srcPort = int(event.Sport)
-			src = event.SrcEndpoint.Addr
-		} else {
-			// Don't care about other operations
-			return
-		}
-
-		tcpEvent := &TcpEvent{
-			ContainerID: event.K8s.ContainerName,
-			PodName:     event.K8s.PodName,
-			Namespace:   event.K8s.Namespace,
-			Source:      src,
-			SourcePort:  srcPort,
-			Destination: dest,
-			DestPort:    destPort,
-			Operation:   event.Operation,
-			Timestamp:   int64(event.Timestamp),
-		}
-
-		t.eventSink.SendTcpEvent(tcpEvent)
-	} else {
-		// TODO: Handle error
-	}
-}
-
-func (t *Tracer) startTcpTracing() error {
-	// Add tcp tracer
-	if err := t.tCollection.AddTracer(tcpTraceName, t.containerSelector); err != nil {
-		log.Printf("error adding tcp tracer: %s\n", err)
-		return err
-	}
-
-	// Get mount namespace map to filter by containers
-	tcpMountnsmap, err := t.tCollection.TracerMountNsMap(tcpTraceName)
-	if err != nil {
-		log.Printf("failed to get tcpMountnsmap: %s\n", err)
-		return err
-	}
-
-	// Create the tcp tracer
-	tracerTcp, err := tracertcp.NewTracer(&tracertcp.Config{MountnsMap: tcpMountnsmap}, t.cCollection, t.tcpEventCallback)
-	if err != nil {
-		log.Printf("error creating tracer: %s\n", err)
-		return err
-	}
-	t.tcpTracer = tracerTcp
-	return nil
-}
-
 func (t *Tracer) startSystemcallTracing() error {
 	// Add seccomp tracer
 	syscallTracer, err := tracerseccomp.NewTracer()
@@ -322,10 +306,6 @@ func (t *Tracer) stopAppBehaviorTracing() error {
 	if err = t.stopExecTracing(); err != nil {
 		log.Printf("error stopping exec tracing: %s\n", err)
 	}
-	// Stop tcp tracer
-	if err = t.stopTcpTracing(); err != nil {
-		log.Printf("error stopping tcp tracing: %s\n", err)
-	}
 	// Stop seccomp tracer
 	if err = t.stopSystemcallTracing(); err != nil {
 		log.Printf("error stopping seccomp tracing: %s\n", err)
@@ -342,6 +322,11 @@ func (t *Tracer) stopAppBehaviorTracing() error {
 	if err = t.stopDnsTracing(); err != nil {
 		log.Printf("error stopping dns tracing: %s\n", err)
 	}
+	// Stop network tracer
+	if err = t.stopNetworkTracing(); err != nil {
+		log.Printf("error stopping network tracing: %s\n", err)
+	}
+
 	return err
 }
 
@@ -358,6 +343,18 @@ func (t *Tracer) stopExecTracing() error {
 func (t *Tracer) stopDnsTracing() error {
 	// Stop dns tracer
 	if err := t.tCollection.RemoveTracer(dnsTraceName); err != nil {
+		log.Printf("error removing tracer: %s\n", err)
+		return err
+	}
+
+	t.dnsTracer.Close()
+
+	return nil
+}
+
+func (t *Tracer) stopNetworkTracing() error {
+	// Stop network tracer
+	if err := t.tCollection.RemoveTracer(networkTraceName); err != nil {
 		log.Printf("error removing tracer: %s\n", err)
 		return err
 	}
@@ -384,16 +381,6 @@ func (t *Tracer) stopCapabilitiesTracing() error {
 		return err
 	}
 	t.capabilitiesTracer.Stop()
-	return nil
-}
-
-func (t *Tracer) stopTcpTracing() error {
-	// Stop tcp tracer
-	if err := t.tCollection.RemoveTracer(tcpTraceName); err != nil {
-		log.Printf("error removing tracer: %s\n", err)
-		return err
-	}
-	t.tcpTracer.Stop()
 	return nil
 }
 

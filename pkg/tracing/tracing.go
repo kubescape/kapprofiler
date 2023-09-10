@@ -9,8 +9,8 @@ import (
 	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
 	tracerdns "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/tracer"
 	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
+	tracernetwork "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/tracer"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
-	tracertcp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/tracer"
 	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 
 	"k8s.io/client-go/rest"
@@ -38,10 +38,10 @@ type Tracer struct {
 
 	// IG tracers
 	execTracer         *tracerexec.Tracer
-	tcpTracer          *tracertcp.Tracer
 	syscallTracer      *tracerseccomp.Tracer
 	openTracer         *traceropen.Tracer
 	dnsTracer          *tracerdns.Tracer
+	networkTracer      *tracernetwork.Tracer
 	capabilitiesTracer *tracercapabilities.Tracer
 
 	// Trace event sink object

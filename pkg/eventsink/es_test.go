@@ -32,18 +32,6 @@ func TestNewEventSink(t *testing.T) {
 		Timestamp:   0,
 	})
 
-	// Excercise TCP event
-	es.SendTcpEvent(&tracing.TcpEvent{
-		ContainerID: "test",
-		PodName:     "test",
-		Namespace:   "test",
-		Source:      "10.0.0.1",
-		SourcePort:  0,
-		Destination: "10.0.0.1",
-		DestPort:    0,
-		Timestamp:   0,
-	})
-
 	// Verify
 
 	// Sleep for a 1 second to allow the event to be processed
