@@ -359,7 +359,7 @@ func (t *Tracer) stopNetworkTracing() error {
 		return err
 	}
 
-	t.dnsTracer.Close()
+	t.networkTracer.Close()
 
 	return nil
 }
