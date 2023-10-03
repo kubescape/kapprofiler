@@ -15,10 +15,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"kapprofiler/pkg/collector"
-	"kapprofiler/pkg/controller"
-	"kapprofiler/pkg/eventsink"
-	"kapprofiler/pkg/tracing"
+	"github.com/kubescape/kapprofiler/pkg/collector"
+	"github.com/kubescape/kapprofiler/pkg/controller"
+	"github.com/kubescape/kapprofiler/pkg/eventsink"
+	"github.com/kubescape/kapprofiler/pkg/tracing"
 )
 
 // Global variables
