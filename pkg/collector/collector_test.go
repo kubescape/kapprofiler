@@ -3,12 +3,13 @@ package collector_test
 import (
 	"context"
 	"fmt"
-	"kapprofiler/pkg/collector"
-	"kapprofiler/pkg/eventsink"
-	"kapprofiler/pkg/tracing"
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/kubescape/kapprofiler/pkg/collector"
+	"github.com/kubescape/kapprofiler/pkg/eventsink"
+	"github.com/kubescape/kapprofiler/pkg/tracing"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

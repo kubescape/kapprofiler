@@ -1,10 +1,11 @@
 package eventsink_test
 
 import (
-	"kapprofiler/pkg/eventsink"
-	"kapprofiler/pkg/tracing"
 	"testing"
 	"time"
+
+	"github.com/kubescape/kapprofiler/pkg/eventsink"
+	"github.com/kubescape/kapprofiler/pkg/tracing"
 )
 
 func TestNewEventSink(t *testing.T) {

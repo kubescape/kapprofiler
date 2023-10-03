@@ -1,8 +1,9 @@
 package tracing_test
 
 import (
-	"kapprofiler/pkg/tracing"
 	"testing"
+
+	"github.com/kubescape/kapprofiler/pkg/tracing"
 
 	"k8s.io/client-go/tools/clientcmd"
 )

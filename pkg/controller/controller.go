@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"kapprofiler/pkg/collector"
 	"log"
 	"strings"
+
+	"github.com/kubescape/kapprofiler/pkg/collector"
 
 	"golang.org/x/exp/slices"
 

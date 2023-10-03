@@ -1,4 +1,4 @@
-module kapprofiler
+module github.com/kubescape/kapprofiler
 
 go 1.19
 

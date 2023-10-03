@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"kapprofiler/pkg/eventsink"
-	"kapprofiler/pkg/tracing"
 	"log"
 	"time"
+
+	"github.com/kubescape/kapprofiler/pkg/eventsink"
+	"github.com/kubescape/kapprofiler/pkg/tracing"
 
 	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"

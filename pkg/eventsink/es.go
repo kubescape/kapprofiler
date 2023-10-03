@@ -2,8 +2,9 @@ package eventsink
 
 import (
 	"fmt"
-	"kapprofiler/pkg/tracing"
 	"os"
+
+	"github.com/kubescape/kapprofiler/pkg/tracing"
 
 	"log"
 
