@@ -198,7 +198,9 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 			Addresses:   event.Addresses,
 			Timestamp:   int64(event.Timestamp),
 		}
-		t.eventSink.SendDnsEvent(dnsEvent)
+		for _, eventSink := range t.eventSinks {
+			eventSink.SendDnsEvent(dnsEvent)
+		}
 	}
 }
 
@@ -215,7 +217,9 @@ func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
 			DstEndpoint: event.DstEndpoint.String(),
 			Timestamp:   int64(event.Timestamp),
 		}
-		t.eventSink.SendNetworkEvent(networkEvent)
+		for _, eventSink := range t.eventSinks {
+			eventSink.SendNetworkEvent(networkEvent)
+		}
 	}
 }
 
@@ -229,7 +233,9 @@ func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) 
 			CapabilityName: event.CapName,
 			Timestamp:      int64(event.Timestamp),
 		}
-		t.eventSink.SendCapabilitiesEvent(capabilitiesEvent)
+		for _, eventSink := range t.eventSinks {
+			eventSink.SendCapabilitiesEvent(capabilitiesEvent)
+		}
 	}
 }
 
@@ -245,7 +251,9 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 			Flags:       event.Flags,
 			Timestamp:   int64(event.Timestamp),
 		}
-		t.eventSink.SendOpenEvent(openEvent)
+		for _, eventSink := range t.eventSinks {
+			eventSink.SendOpenEvent(openEvent)
+		}
 	}
 }
 
@@ -260,7 +268,9 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 			Env:         []string{},
 			Timestamp:   int64(event.Timestamp),
 		}
-		t.eventSink.SendExecveEvent(execveEvent)
+		for _, eventSink := range t.eventSinks {
+			eventSink.SendExecveEvent(execveEvent)
+		}
 	}
 }
 
