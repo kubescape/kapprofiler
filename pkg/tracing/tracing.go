@@ -44,19 +44,19 @@ type Tracer struct {
 	networkTracer      *tracernetwork.Tracer
 	capabilitiesTracer *tracercapabilities.Tracer
 
-	// Trace event sink object
-	eventSink EventSink
+	// Trace event sink objects
+	eventSinks []EventSink
 
 	// Container activity listener
 	containerActivityListener []ContainerActivityEventListener
 }
 
-func NewTracer(nodeName string, k8sConfig *rest.Config, eventSink EventSink, filterByLabel bool) *Tracer {
+func NewTracer(nodeName string, k8sConfig *rest.Config, eventSinks []EventSink, filterByLabel bool) *Tracer {
 	return &Tracer{running: false,
 		nodeName:                  nodeName,
 		filterByLabel:             filterByLabel,
 		k8sConfig:                 k8sConfig,
-		eventSink:                 eventSink,
+		eventSinks:                eventSinks,
 		containerActivityListener: []ContainerActivityEventListener{}}
 }
 
