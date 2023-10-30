@@ -22,6 +22,8 @@ type ITracer interface {
 	AddContainerActivityListener(listener ContainerActivityEventListener)
 	RemoveContainerActivityListener(listener ContainerActivityEventListener)
 	PeekSyscallInContainer(nsMountId uint64) ([]string, error)
+	AddEventSink(sink EventSink)
+	RemoveEventSink(sink EventSink)
 }
 
 type Tracer struct {
@@ -87,6 +89,23 @@ func (t *Tracer) Stop() error {
 		t.running = false
 	}
 	return nil
+}
+
+func (t *Tracer) AddEventSink(sink EventSink) {
+	if t != nil && t.eventSinks != nil {
+		t.eventSinks = append(t.eventSinks, sink)
+	}
+}
+
+func (t *Tracer) RemoveEventSink(sink EventSink) {
+	if t != nil && t.eventSinks != nil {
+		for i, s := range t.eventSinks {
+			if s == sink {
+				t.eventSinks = append(t.eventSinks[:i], t.eventSinks[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 func (t *Tracer) AddContainerActivityListener(listener ContainerActivityEventListener) {
