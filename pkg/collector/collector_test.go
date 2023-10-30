@@ -42,6 +42,12 @@ func (t *TestTracer) PeekSyscallInContainer(nsMountId uint64) ([]string, error) 
 	return []string{"open", "close"}, nil
 }
 
+func (t *TestTracer) AddEventSink(sink tracing.EventSink) {
+}
+
+func (t *TestTracer) RemoveEventSink(sink tracing.EventSink) {
+}
+
 func GetKubernetesConfig() (*rest.Config, error) {
 	// Check if the Kubernetes cluster is reachable
 	// Load the Kubernetes configuration from the default location
@@ -109,13 +115,15 @@ func TestCollectorBasic(t *testing.T) {
 
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
-		ContainerID: containedID.Container,
-		PodName:     containedID.PodName,
-		Namespace:   containedID.Namespace,
-		PathName:    "/bin/bash",
-		Args:        []string{"-c", "echo", "HapoelForever"},
-		Env:         []string{},
-		Timestamp:   0,
+		GeneralEvent: tracing.GeneralEvent{
+			ContainerID: containedID.Container,
+			PodName:     containedID.PodName,
+			Namespace:   containedID.Namespace,
+			Timestamp:   0,
+		},
+		PathName: "/bin/bash",
+		Args:     []string{"-c", "echo", "HapoelForever"},
+		Env:      []string{},
 	})
 
 	// Let the event sink process the event
@@ -227,13 +235,15 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
-		ContainerID: containedID.Container,
-		PodName:     containedID.PodName,
-		Namespace:   containedID.Namespace,
-		PathName:    "/bin/bash",
-		Args:        []string{"-c", "echo", "HapoelForever"},
-		Env:         []string{},
-		Timestamp:   0,
+		GeneralEvent: tracing.GeneralEvent{
+			ContainerID: containedID.Container,
+			PodName:     containedID.PodName,
+			Namespace:   containedID.Namespace,
+			Timestamp:   0,
+		},
+		PathName: "/bin/bash",
+		Args:     []string{"-c", "echo", "HapoelForever"},
+		Env:      []string{},
 	})
 
 	// Sleep for the interval time + 1 second

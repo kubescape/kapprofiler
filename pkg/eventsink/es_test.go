@@ -24,13 +24,15 @@ func TestNewEventSink(t *testing.T) {
 
 	// Exercise
 	es.SendExecveEvent(&tracing.ExecveEvent{
-		ContainerID: "test",
-		PodName:     "test",
-		Namespace:   "test",
-		PathName:    "test",
-		Args:        []string{"test"},
-		Env:         []string{"test"},
-		Timestamp:   0,
+		GeneralEvent: tracing.GeneralEvent{
+			ContainerID: "test",
+			PodName:     "test",
+			Namespace:   "test",
+			Timestamp:   0,
+		},
+		PathName: "test",
+		Args:     []string{"test"},
+		Env:      []string{"test"},
 	})
 
 	// Verify
