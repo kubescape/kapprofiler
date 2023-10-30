@@ -10,6 +10,16 @@ const (
 	ContainerActivityEventStop  = "stop"
 )
 
+type EventType int
+
+const (
+	ExecveEventType EventType = iota
+	OpenEventType
+	CapabilitiesEventType
+	DnsEventType
+	NetworkEventType
+)
+
 type ContainerActivityEventListener interface {
 	// OnContainerActivityEvent is called when a container activity event is received
 	OnContainerActivityEvent(event *ContainerActivityEvent)
@@ -25,54 +35,52 @@ type ContainerActivityEvent struct {
 	NsMntId     uint64
 }
 
-type ExecveEvent struct {
+type GeneralEvent struct {
 	ContainerID string
 	PodName     string
 	Namespace   string
-	PathName    string
-	Args        []string
-	Env         []string
 	Timestamp   int64
+	EventType   EventType
+}
+
+type ExecveEvent struct {
+	GeneralEvent
+
+	PathName string
+	Args     []string
+	Env      []string
 }
 
 type OpenEvent struct {
-	ContainerID string
-	PodName     string
-	Namespace   string
-	TaskName    string
-	TaskId      int
-	PathName    string
-	Flags       []string
-	Timestamp   int64
+	GeneralEvent
+
+	TaskName string
+	TaskId   int
+	PathName string
+	Flags    []string
 }
 
 type CapabilitiesEvent struct {
-	ContainerID    string
-	PodName        string
-	Namespace      string
+	GeneralEvent
+
 	Syscall        string
 	CapabilityName string
-	Timestamp      int64
 }
 
 type DnsEvent struct {
-	ContainerID string
-	PodName     string
-	Namespace   string
-	DnsName     string
-	Addresses   []string
-	Timestamp   int64
+	GeneralEvent
+
+	DnsName   string
+	Addresses []string
 }
 
 type NetworkEvent struct {
-	ContainerID string
-	PodName     string
-	Namespace   string
+	GeneralEvent
+
 	PacketType  string
 	Protocol    string
 	Port        uint16
 	DstEndpoint string
-	Timestamp   int64
 }
 
 type EventSink interface {

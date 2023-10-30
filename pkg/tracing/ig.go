@@ -191,12 +191,15 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
 		dnsEvent := &DnsEvent{
-			ContainerID: event.K8s.ContainerName,
-			PodName:     event.K8s.PodName,
-			Namespace:   event.K8s.Namespace,
-			DnsName:     event.DNSName,
-			Addresses:   event.Addresses,
-			Timestamp:   int64(event.Timestamp),
+			GeneralEvent: GeneralEvent{
+				ContainerID: event.K8s.ContainerName,
+				PodName:     event.K8s.PodName,
+				Namespace:   event.K8s.Namespace,
+				Timestamp:   int64(event.Timestamp),
+				EventType:   DnsEventType,
+			},
+			DnsName:   event.DNSName,
+			Addresses: event.Addresses,
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendDnsEvent(dnsEvent)
@@ -208,14 +211,17 @@ func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
 		networkEvent := &NetworkEvent{
-			ContainerID: event.K8s.ContainerName,
-			PodName:     event.K8s.PodName,
-			Namespace:   event.K8s.Namespace,
+			GeneralEvent: GeneralEvent{
+				ContainerID: event.K8s.ContainerName,
+				PodName:     event.K8s.PodName,
+				Namespace:   event.K8s.Namespace,
+				Timestamp:   int64(event.Timestamp),
+				EventType:   NetworkEventType,
+			},
 			PacketType:  event.PktType,
 			Protocol:    event.Proto,
 			Port:        event.Port,
 			DstEndpoint: event.DstEndpoint.String(),
-			Timestamp:   int64(event.Timestamp),
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendNetworkEvent(networkEvent)
@@ -226,12 +232,15 @@ func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
 func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		capabilitiesEvent := &CapabilitiesEvent{
-			ContainerID:    event.K8s.ContainerName,
-			PodName:        event.K8s.PodName,
-			Namespace:      event.K8s.Namespace,
+			GeneralEvent: GeneralEvent{
+				ContainerID: event.K8s.ContainerName,
+				PodName:     event.K8s.PodName,
+				Namespace:   event.K8s.Namespace,
+				Timestamp:   int64(event.Timestamp),
+				EventType:   CapabilitiesEventType,
+			},
 			Syscall:        event.Syscall,
 			CapabilityName: event.CapName,
-			Timestamp:      int64(event.Timestamp),
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendCapabilitiesEvent(capabilitiesEvent)
@@ -242,14 +251,17 @@ func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) 
 func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
 		openEvent := &OpenEvent{
-			ContainerID: event.K8s.ContainerName,
-			PodName:     event.K8s.PodName,
-			Namespace:   event.K8s.Namespace,
-			PathName:    event.FullPath,
-			TaskName:    event.Comm,
-			TaskId:      int(event.Pid),
-			Flags:       event.Flags,
-			Timestamp:   int64(event.Timestamp),
+			GeneralEvent: GeneralEvent{
+				ContainerID: event.K8s.ContainerName,
+				PodName:     event.K8s.PodName,
+				Namespace:   event.K8s.Namespace,
+				Timestamp:   int64(event.Timestamp),
+				EventType:   OpenEventType,
+			},
+			PathName: event.FullPath,
+			TaskName: event.Comm,
+			TaskId:   int(event.Pid),
+			Flags:    event.Flags,
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendOpenEvent(openEvent)
@@ -260,13 +272,16 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Retval > -1 {
 		execveEvent := &ExecveEvent{
-			ContainerID: event.K8s.ContainerName,
-			PodName:     event.K8s.PodName,
-			Namespace:   event.K8s.Namespace,
-			PathName:    event.Args[0],
-			Args:        event.Args[1:],
-			Env:         []string{},
-			Timestamp:   int64(event.Timestamp),
+			GeneralEvent: GeneralEvent{
+				ContainerID: event.K8s.ContainerName,
+				PodName:     event.K8s.PodName,
+				Namespace:   event.K8s.Namespace,
+				Timestamp:   int64(event.Timestamp),
+				EventType:   ExecveEventType,
+			},
+			PathName: event.Args[0],
+			Args:     event.Args[1:],
+			Env:      []string{},
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendExecveEvent(execveEvent)
