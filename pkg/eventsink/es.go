@@ -8,12 +8,12 @@ import (
 
 	"log"
 
-	bolt "go.etcd.io/bbolt"
+	badger "github.com/dgraph-io/badger/v4"
 )
 
 type EventSink struct {
 	homeDir                  string
-	fileDB                   *bolt.DB
+	fileDB                   *badger.DB
 	execveEventChannel       chan *tracing.ExecveEvent
 	openEventChannel         chan *tracing.OpenEvent
 	capabilitiesEventChannel chan *tracing.CapabilitiesEvent
@@ -26,12 +26,12 @@ func NewEventSink(homeDir string) (*EventSink, error) {
 }
 
 func (es *EventSink) Start() error {
-	// Setup bolt database
+	// Setup badger database
 	if es.homeDir == "" {
 		// TODO: Use a better default
 		es.homeDir = "/tmp"
 	}
-	db, err := bolt.Open(es.homeDir+"/execve-events.db", 0600, nil)
+	db, err := badger.Open(es.homeDir+"/execve-events.db", 0600, nil)
 	if err != nil {
 		return err
 	}
@@ -86,13 +86,13 @@ func (es *EventSink) Stop() error {
 	// Close the channel for network events
 	close(es.networkEventChannel)
 
-	// Close the bolt database
+	// Close the badger database
 	err := es.fileDB.Close()
 	if err != nil {
 		return err
 	}
 
-	// Delete boltdb file
+	// Delete badgerdb file
 	os.Remove(es.homeDir + "/execve-events.db")
 
 	return nil
@@ -101,7 +101,7 @@ func (es *EventSink) Stop() error {
 func (es *EventSink) networkEventWorker() error {
 	for event := range es.networkEventChannel {
 		bucket := fmt.Sprintf("network-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := es.fileDB.Update(func(tx *badger.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
 				log.Printf("error creating bucket: %s\n", err)
@@ -130,7 +130,7 @@ func (es *EventSink) networkEventWorker() error {
 func (es *EventSink) dnsEventWorker() error {
 	for event := range es.dnsEventChannel {
 		bucket := fmt.Sprintf("dns-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := es.fileDB.Update(func(tx *badger.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
 				log.Printf("error creating bucket: %s\n", err)
@@ -159,7 +159,7 @@ func (es *EventSink) dnsEventWorker() error {
 func (es *EventSink) capabilitiesEventWorker() error {
 	for event := range es.capabilitiesEventChannel {
 		bucket := fmt.Sprintf("capabilities-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := es.fileDB.Update(func(tx *badger.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
 				log.Printf("error creating bucket: %s\n", err)
@@ -188,7 +188,7 @@ func (es *EventSink) capabilitiesEventWorker() error {
 func (es *EventSink) openEventWorker() error {
 	for event := range es.openEventChannel {
 		bucket := fmt.Sprintf("open-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := es.fileDB.Update(func(tx *badger.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
 				log.Printf("error creating bucket: %s\n", err)
@@ -220,7 +220,7 @@ func (es *EventSink) execveEventWorker() error {
 	// Wait for execve events and store them in the database
 	for event := range es.execveEventChannel {
 		bucket := fmt.Sprintf("execve-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *bolt.Tx) error {
+		err := es.fileDB.Update(func(tx *badger.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
 				log.Printf("error creating bucket: %s\n", err)
@@ -248,7 +248,7 @@ func (es *EventSink) execveEventWorker() error {
 
 func (es *EventSink) CleanupContainer(namespace string, podName string, containerID string) error {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
-	err := es.fileDB.Update(func(tx *bolt.Tx) error {
+	err := es.fileDB.Update(func(tx *badger.Tx) error {
 		err := tx.DeleteBucket([]byte(bucket))
 		if err != nil {
 			return err
@@ -257,7 +257,7 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 	})
 
 	bucket = fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *bolt.Tx) error {
+	err = es.fileDB.Update(func(tx *badger.Tx) error {
 		err := tx.DeleteBucket([]byte(bucket))
 		if err != nil {
 			return err
@@ -266,7 +266,7 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 	})
 
 	bucket = fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *bolt.Tx) error {
+	err = es.fileDB.Update(func(tx *badger.Tx) error {
 		err := tx.DeleteBucket([]byte(bucket))
 		if err != nil {
 			return err
@@ -275,7 +275,7 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 	})
 
 	bucket = fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *bolt.Tx) error {
+	err = es.fileDB.Update(func(tx *badger.Tx) error {
 		err := tx.DeleteBucket([]byte(bucket))
 		if err != nil {
 			return err
@@ -284,7 +284,7 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 	})
 
 	bucket = fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *bolt.Tx) error {
+	err = es.fileDB.Update(func(tx *badger.Tx) error {
 		err := tx.DeleteBucket([]byte(bucket))
 		if err != nil {
 			return err
@@ -298,7 +298,7 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 func (es *EventSink) GetNetworkEvents(namespace string, podName string, containerID string) ([]*tracing.NetworkEvent, error) {
 	bucket := fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.NetworkEvent
-	err := es.fileDB.View(func(tx *bolt.Tx) error {
+	err := es.fileDB.View(func(tx *badger.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
 			return nil
@@ -323,7 +323,7 @@ func (es *EventSink) GetNetworkEvents(namespace string, podName string, containe
 func (es *EventSink) GetDnsEvents(namespace string, podName string, containerID string) ([]*tracing.DnsEvent, error) {
 	bucket := fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.DnsEvent
-	err := es.fileDB.View(func(tx *bolt.Tx) error {
+	err := es.fileDB.View(func(tx *badger.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
 			return nil
@@ -348,7 +348,7 @@ func (es *EventSink) GetDnsEvents(namespace string, podName string, containerID 
 func (es *EventSink) GetCapabilitiesEvents(namespace string, podName string, containerID string) ([]*tracing.CapabilitiesEvent, error) {
 	bucket := fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.CapabilitiesEvent
-	err := es.fileDB.View(func(tx *bolt.Tx) error {
+	err := es.fileDB.View(func(tx *badger.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
 			return nil
@@ -373,7 +373,7 @@ func (es *EventSink) GetCapabilitiesEvents(namespace string, podName string, con
 func (es *EventSink) GetExecveEvents(namespace string, podName string, containerID string) ([]*tracing.ExecveEvent, error) {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.ExecveEvent
-	err := es.fileDB.View(func(tx *bolt.Tx) error {
+	err := es.fileDB.View(func(tx *badger.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
 			return nil
@@ -398,7 +398,7 @@ func (es *EventSink) GetExecveEvents(namespace string, podName string, container
 func (es *EventSink) GetOpenEvents(namespace string, podName string, containerID string) ([]*tracing.OpenEvent, error) {
 	bucket := fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.OpenEvent
-	err := es.fileDB.View(func(tx *bolt.Tx) error {
+	err := es.fileDB.View(func(tx *badger.Tx) error {
 		b := tx.Bucket([]byte(bucket))
 		if b == nil {
 			return nil
