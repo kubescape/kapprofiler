@@ -36,11 +36,12 @@ type ContainerActivityEvent struct {
 }
 
 type GeneralEvent struct {
-	ContainerID string
-	PodName     string
-	Namespace   string
-	Timestamp   int64
-	EventType   EventType
+	ContainerName string
+	ContainerID   string
+	PodName       string
+	Namespace     string
+	Timestamp     int64
+	EventType     EventType
 }
 
 type ExecveEvent struct {
@@ -100,6 +101,9 @@ type EventSink interface {
 func (event *NetworkEvent) GobEncode() ([]byte, error) {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerName); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.ContainerID); err != nil {
 		return nil, err
 	}
@@ -130,6 +134,9 @@ func (event *NetworkEvent) GobEncode() ([]byte, error) {
 func (event *NetworkEvent) GobDecode(buf []byte) error {
 	r := bytes.NewBuffer(buf)
 	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerName); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.ContainerID); err != nil {
 		return err
 	}
@@ -161,6 +168,9 @@ func (event *NetworkEvent) GobDecode(buf []byte) error {
 func (event *DnsEvent) GobEncode() ([]byte, error) {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerName); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.ContainerID); err != nil {
 		return nil, err
 	}
@@ -185,6 +195,9 @@ func (event *DnsEvent) GobEncode() ([]byte, error) {
 func (event *DnsEvent) GobDecode(buf []byte) error {
 	r := bytes.NewBuffer(buf)
 	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerName); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.ContainerID); err != nil {
 		return err
 	}
@@ -210,6 +223,9 @@ func (event *DnsEvent) GobDecode(buf []byte) error {
 func (event *CapabilitiesEvent) GobEncode() ([]byte, error) {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerName); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.ContainerID); err != nil {
 		return nil, err
 	}
@@ -234,6 +250,9 @@ func (event *CapabilitiesEvent) GobEncode() ([]byte, error) {
 func (event *CapabilitiesEvent) GobDecode(buf []byte) error {
 	r := bytes.NewBuffer(buf)
 	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerName); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.ContainerID); err != nil {
 		return err
 	}
@@ -259,6 +278,9 @@ func (event *CapabilitiesEvent) GobDecode(buf []byte) error {
 func (event *OpenEvent) GobEncode() ([]byte, error) {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerName); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.ContainerID); err != nil {
 		return nil, err
 	}
@@ -289,6 +311,9 @@ func (event *OpenEvent) GobEncode() ([]byte, error) {
 func (event *OpenEvent) GobDecode(buf []byte) error {
 	r := bytes.NewBuffer(buf)
 	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerName); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.ContainerID); err != nil {
 		return err
 	}
@@ -320,6 +345,9 @@ func (event *OpenEvent) GobDecode(buf []byte) error {
 func (event *ExecveEvent) GobEncode() ([]byte, error) {
 	w := new(bytes.Buffer)
 	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerName); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.ContainerID); err != nil {
 		return nil, err
 	}
@@ -347,6 +375,9 @@ func (event *ExecveEvent) GobEncode() ([]byte, error) {
 func (event *ExecveEvent) GobDecode(buf []byte) error {
 	r := bytes.NewBuffer(buf)
 	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerName); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.ContainerID); err != nil {
 		return err
 	}
