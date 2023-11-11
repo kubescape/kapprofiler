@@ -192,11 +192,12 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
 		dnsEvent := &DnsEvent{
 			GeneralEvent: GeneralEvent{
-				ContainerID: event.K8s.ContainerName,
-				PodName:     event.K8s.PodName,
-				Namespace:   event.K8s.Namespace,
-				Timestamp:   int64(event.Timestamp),
-				EventType:   DnsEventType,
+				ContainerName: event.K8s.ContainerName,
+				ContainerID:   event.Runtime.ContainerID,
+				PodName:       event.K8s.PodName,
+				Namespace:     event.K8s.Namespace,
+				Timestamp:     int64(event.Timestamp),
+				EventType:     DnsEventType,
 			},
 			DnsName:   event.DNSName,
 			Addresses: event.Addresses,
@@ -212,11 +213,12 @@ func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
 		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
 		networkEvent := &NetworkEvent{
 			GeneralEvent: GeneralEvent{
-				ContainerID: event.K8s.ContainerName,
-				PodName:     event.K8s.PodName,
-				Namespace:   event.K8s.Namespace,
-				Timestamp:   int64(event.Timestamp),
-				EventType:   NetworkEventType,
+				ContainerName: event.K8s.ContainerName,
+				ContainerID:   event.Runtime.ContainerID,
+				PodName:       event.K8s.PodName,
+				Namespace:     event.K8s.Namespace,
+				Timestamp:     int64(event.Timestamp),
+				EventType:     NetworkEventType,
 			},
 			PacketType:  event.PktType,
 			Protocol:    event.Proto,
@@ -233,11 +235,12 @@ func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) 
 	if event.Type == eventtypes.NORMAL {
 		capabilitiesEvent := &CapabilitiesEvent{
 			GeneralEvent: GeneralEvent{
-				ContainerID: event.K8s.ContainerName,
-				PodName:     event.K8s.PodName,
-				Namespace:   event.K8s.Namespace,
-				Timestamp:   int64(event.Timestamp),
-				EventType:   CapabilitiesEventType,
+				ContainerName: event.K8s.ContainerName,
+				ContainerID:   event.Runtime.ContainerID,
+				PodName:       event.K8s.PodName,
+				Namespace:     event.K8s.Namespace,
+				Timestamp:     int64(event.Timestamp),
+				EventType:     CapabilitiesEventType,
 			},
 			Syscall:        event.Syscall,
 			CapabilityName: event.CapName,
@@ -252,11 +255,12 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Ret > -1 {
 		openEvent := &OpenEvent{
 			GeneralEvent: GeneralEvent{
-				ContainerID: event.K8s.ContainerName,
-				PodName:     event.K8s.PodName,
-				Namespace:   event.K8s.Namespace,
-				Timestamp:   int64(event.Timestamp),
-				EventType:   OpenEventType,
+				ContainerName: event.K8s.ContainerName,
+				ContainerID:   event.Runtime.ContainerID,
+				PodName:       event.K8s.PodName,
+				Namespace:     event.K8s.Namespace,
+				Timestamp:     int64(event.Timestamp),
+				EventType:     OpenEventType,
 			},
 			PathName: event.FullPath,
 			TaskName: event.Comm,
@@ -273,11 +277,12 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 	if event.Type == eventtypes.NORMAL && event.Retval > -1 {
 		execveEvent := &ExecveEvent{
 			GeneralEvent: GeneralEvent{
-				ContainerID: event.K8s.ContainerName,
-				PodName:     event.K8s.PodName,
-				Namespace:   event.K8s.Namespace,
-				Timestamp:   int64(event.Timestamp),
-				EventType:   ExecveEventType,
+				ContainerName: event.K8s.ContainerName,
+				ContainerID:   event.Runtime.ContainerID,
+				PodName:       event.K8s.PodName,
+				Namespace:     event.K8s.Namespace,
+				Timestamp:     int64(event.Timestamp),
+				EventType:     ExecveEventType,
 			},
 			PathName: event.Args[0],
 			Args:     event.Args[1:],

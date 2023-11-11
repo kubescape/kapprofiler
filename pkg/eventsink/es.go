@@ -100,7 +100,7 @@ func (es *EventSink) Stop() error {
 
 func (es *EventSink) networkEventWorker() error {
 	for event := range es.networkEventChannel {
-		bucket := fmt.Sprintf("network-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		bucket := fmt.Sprintf("network-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
 		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
@@ -129,7 +129,7 @@ func (es *EventSink) networkEventWorker() error {
 
 func (es *EventSink) dnsEventWorker() error {
 	for event := range es.dnsEventChannel {
-		bucket := fmt.Sprintf("dns-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		bucket := fmt.Sprintf("dns-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
 		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
@@ -158,7 +158,7 @@ func (es *EventSink) dnsEventWorker() error {
 
 func (es *EventSink) capabilitiesEventWorker() error {
 	for event := range es.capabilitiesEventChannel {
-		bucket := fmt.Sprintf("capabilities-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		bucket := fmt.Sprintf("capabilities-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
 		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
@@ -187,7 +187,7 @@ func (es *EventSink) capabilitiesEventWorker() error {
 
 func (es *EventSink) openEventWorker() error {
 	for event := range es.openEventChannel {
-		bucket := fmt.Sprintf("open-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		bucket := fmt.Sprintf("open-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
 		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
@@ -219,7 +219,7 @@ func (es *EventSink) execveEventWorker() error {
 
 	// Wait for execve events and store them in the database
 	for event := range es.execveEventChannel {
-		bucket := fmt.Sprintf("execve-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
+		bucket := fmt.Sprintf("execve-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
 		err := es.fileDB.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 			if err != nil {
