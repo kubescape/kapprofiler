@@ -8,7 +8,8 @@ import (
 
 	"log"
 
-	badger "github.com/dgraph-io/badger/v4"
+	badger "github.com/dgraph-io/badger/v2"
+	badgerOpts "github.com/dgraph-io/badger/v2/options"
 )
 
 type EventSink struct {
@@ -31,7 +32,11 @@ func (es *EventSink) Start() error {
 		// TODO: Use a better default
 		es.homeDir = "/tmp"
 	}
-	db, err := badger.Open(es.homeDir+"/execve-events.db", 0600, nil)
+
+	opts := badger.DefaultOptions(es.homeDir+"/execve-events.db")
+	opts.ValueLogLoadingMode = badgerOpts.FileIO
+    opts.TableLoadingMode = badgerOpts.FileIO
+	db, err := badger.Open(opts)
 	if err != nil {
 		return err
 	}
