@@ -99,6 +99,7 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
 	cm.containers[*id] = &ContainerState{
 		running: true,
 	}
+
 	// Add a timer for collection of data from container events
 	startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 }
@@ -292,6 +293,9 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		} else {
 			// if the application profile is final (immutable), we cannot patch it
 			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.com/final"] == "true" {
+				// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
+				// This is an optimization to avoid collecting events for containers that are already finalized
+				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 				return
 			}
 
