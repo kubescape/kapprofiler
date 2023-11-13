@@ -8,13 +8,12 @@ import (
 
 	"log"
 
-	badger "github.com/dgraph-io/badger/v2"
-	badgerOpts "github.com/dgraph-io/badger/v2/options"
+	nutsdb "github.com/nutsdb/nutsdb"
 )
 
 type EventSink struct {
 	homeDir                  string
-	fileDB                   *badger.DB
+	fileDB                   *nutsdb.DB
 	execveEventChannel       chan *tracing.ExecveEvent
 	openEventChannel         chan *tracing.OpenEvent
 	capabilitiesEventChannel chan *tracing.CapabilitiesEvent
@@ -27,16 +26,19 @@ func NewEventSink(homeDir string) (*EventSink, error) {
 }
 
 func (es *EventSink) Start() error {
-	// Setup badger database
+	// Setup nutsdb database
 	if es.homeDir == "" {
 		// TODO: Use a better default
 		es.homeDir = "/tmp"
 	}
 
-	opts := badger.DefaultOptions(es.homeDir+"/execve-events.db")
-	opts.ValueLogLoadingMode = badgerOpts.FileIO
-    opts.TableLoadingMode = badgerOpts.FileIO
-	db, err := badger.Open(opts)
+	
+
+	db, err := nutsdb.Open(
+		nutsdb.DefaultOptions,
+		nutsdb.WithDir(es.homeDir+"/execve-events.db"),
+		nutsdb.WithRWMode(nutsdb.FileIO),
+	)
 	if err != nil {
 		return err
 	}
@@ -91,13 +93,13 @@ func (es *EventSink) Stop() error {
 	// Close the channel for network events
 	close(es.networkEventChannel)
 
-	// Close the badger database
+	// Close the nuts database
 	err := es.fileDB.Close()
 	if err != nil {
 		return err
 	}
 
-	// Delete badgerdb file
+	// Delete nutsdb file
 	os.Remove(es.homeDir + "/execve-events.db")
 
 	return nil
@@ -106,18 +108,13 @@ func (es *EventSink) Stop() error {
 func (es *EventSink) networkEventWorker() error {
 	for event := range es.networkEventChannel {
 		bucket := fmt.Sprintf("network-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *badger.Tx) error {
-			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-			if err != nil {
-				log.Printf("error creating bucket: %s\n", err)
-				return err
-			}
+		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
 			sEvent, err := event.GobEncode()
 			if err != nil {
 				log.Printf("error encoding network event: %s\n", err)
 				return err
 			}
-			err = b.Put(sEvent, nil)
+			err = tx.Put(bucket, sEvent, nil, 0)
 			if err != nil {
 				log.Printf("error storing network event: %s\n", err)
 				return err
@@ -135,18 +132,13 @@ func (es *EventSink) networkEventWorker() error {
 func (es *EventSink) dnsEventWorker() error {
 	for event := range es.dnsEventChannel {
 		bucket := fmt.Sprintf("dns-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *badger.Tx) error {
-			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-			if err != nil {
-				log.Printf("error creating bucket: %s\n", err)
-				return err
-			}
+		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
 			sEvent, err := event.GobEncode()
 			if err != nil {
 				log.Printf("error encoding dns event: %s\n", err)
 				return err
 			}
-			err = b.Put(sEvent, nil)
+			err = tx.Put(bucket, sEvent, nil, 0)
 			if err != nil {
 				log.Printf("error storing dns event: %s\n", err)
 				return err
@@ -164,18 +156,13 @@ func (es *EventSink) dnsEventWorker() error {
 func (es *EventSink) capabilitiesEventWorker() error {
 	for event := range es.capabilitiesEventChannel {
 		bucket := fmt.Sprintf("capabilities-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *badger.Tx) error {
-			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-			if err != nil {
-				log.Printf("error creating bucket: %s\n", err)
-				return err
-			}
+		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
 			sEvent, err := event.GobEncode()
 			if err != nil {
 				log.Printf("error encoding capabilities event: %s\n", err)
 				return err
 			}
-			err = b.Put(sEvent, nil)
+			err = tx.Put(bucket, sEvent, nil, 0)
 			if err != nil {
 				log.Printf("error storing capabilities event: %s\n", err)
 				return err
@@ -193,18 +180,13 @@ func (es *EventSink) capabilitiesEventWorker() error {
 func (es *EventSink) openEventWorker() error {
 	for event := range es.openEventChannel {
 		bucket := fmt.Sprintf("open-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *badger.Tx) error {
-			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-			if err != nil {
-				log.Printf("error creating bucket: %s\n", err)
-				return err
-			}
+		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
 			sEvent, err := event.GobEncode()
 			if err != nil {
 				log.Printf("error encoding open event: %s\n", err)
 				return err
 			}
-			err = b.Put(sEvent, nil)
+			err = tx.Put(bucket, sEvent, nil, 0)
 			if err != nil {
 				log.Printf("error storing open event: %s\n", err)
 				return err
@@ -225,18 +207,13 @@ func (es *EventSink) execveEventWorker() error {
 	// Wait for execve events and store them in the database
 	for event := range es.execveEventChannel {
 		bucket := fmt.Sprintf("execve-%s-%s-%s", event.Namespace, event.PodName, event.ContainerID)
-		err := es.fileDB.Update(func(tx *badger.Tx) error {
-			b, err := tx.CreateBucketIfNotExists([]byte(bucket))
-			if err != nil {
-				log.Printf("error creating bucket: %s\n", err)
-				return err
-			}
+		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
 			sEvent, err := event.GobEncode()
 			if err != nil {
 				log.Printf("error encoding execve event: %s\n", err)
 				return err
 			}
-			err = b.Put(sEvent, nil)
+			err = tx.Put(bucket, sEvent, nil, 0)
 			if err != nil {
 				log.Printf("error storing execve event: %s\n", err)
 				return err
@@ -253,175 +230,160 @@ func (es *EventSink) execveEventWorker() error {
 
 func (es *EventSink) CleanupContainer(namespace string, podName string, containerID string) error {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
-	err := es.fileDB.Update(func(tx *badger.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
+	if err := es.fileDB.Update(
+		func(tx *nutsdb.Tx) error {
+			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
+		}); err != nil {
+		log.Printf("error deleting bucket: %s\n", err)
 		}
-		return nil
-	})
+
 
 	bucket = fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *badger.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
+	if err := es.fileDB.Update(
+		func(tx *nutsdb.Tx) error {
+			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
+		}); err != nil {
+		log.Printf("error deleting bucket: %s\n", err)
 		}
-		return nil
-	})
 
 	bucket = fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *badger.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
+	if err := es.fileDB.Update(
+		func(tx *nutsdb.Tx) error {
+			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
+		}); err != nil {
+		log.Printf("error deleting bucket: %s\n", err)
 		}
-		return nil
-	})
 
 	bucket = fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *badger.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
+	if err := es.fileDB.Update(
+		func(tx *nutsdb.Tx) error {
+			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
+		}); err != nil {
+		log.Printf("error deleting bucket: %s\n", err)
 		}
-		return nil
-	})
 
 	bucket = fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
-	err = es.fileDB.Update(func(tx *badger.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
+	if err := es.fileDB.Update(
+		func(tx *nutsdb.Tx) error {
+			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
+		}); err != nil {
+		log.Printf("error deleting bucket: %s\n", err)
 		}
-		return nil
-	})
-
-	return err
-}
+	return nil
+	}
 
 func (es *EventSink) GetNetworkEvents(namespace string, podName string, containerID string) ([]*tracing.NetworkEvent, error) {
 	bucket := fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.NetworkEvent
-	err := es.fileDB.View(func(tx *badger.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		if b == nil {
-			return nil
+	es.fileDB.View(func(tx *nutsdb.Tx) error {
+		entries, err := tx.GetAll(bucket)
+		if err != nil {
+			return err
 		}
-		b.ForEach(func(k, v []byte) error {
+
+		for _, entry := range entries {
 			event := &tracing.NetworkEvent{}
-			err := event.GobDecode(k)
+			err := event.GobDecode(entry.Key)
 			if err != nil {
 				return err
 			}
 			events = append(events, event)
-			return nil
-		})
+		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
+
 	return events, nil
 }
 
 func (es *EventSink) GetDnsEvents(namespace string, podName string, containerID string) ([]*tracing.DnsEvent, error) {
 	bucket := fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.DnsEvent
-	err := es.fileDB.View(func(tx *badger.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		if b == nil {
-			return nil
+	es.fileDB.View(func(tx *nutsdb.Tx) error {
+		entries, err := tx.GetAll(bucket)
+		if err != nil {
+			return err
 		}
-		b.ForEach(func(k, v []byte) error {
+
+		for _, entry := range entries {
 			event := &tracing.DnsEvent{}
-			err := event.GobDecode(k)
+			err := event.GobDecode(entry.Key)
 			if err != nil {
 				return err
 			}
 			events = append(events, event)
-			return nil
-		})
+		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
+
 	return events, nil
 }
 
 func (es *EventSink) GetCapabilitiesEvents(namespace string, podName string, containerID string) ([]*tracing.CapabilitiesEvent, error) {
 	bucket := fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.CapabilitiesEvent
-	err := es.fileDB.View(func(tx *badger.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		if b == nil {
-			return nil
+	es.fileDB.View(func(tx *nutsdb.Tx) error {
+		entries, err := tx.GetAll(bucket)
+		if err != nil {
+			return err
 		}
-		b.ForEach(func(k, v []byte) error {
+
+		for _, entry := range entries {
 			event := &tracing.CapabilitiesEvent{}
-			err := event.GobDecode(k)
+			err := event.GobDecode(entry.Key)
 			if err != nil {
 				return err
 			}
 			events = append(events, event)
-			return nil
-		})
+		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
+
 	return events, nil
 }
 
 func (es *EventSink) GetExecveEvents(namespace string, podName string, containerID string) ([]*tracing.ExecveEvent, error) {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.ExecveEvent
-	err := es.fileDB.View(func(tx *badger.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		if b == nil {
-			return nil
+	es.fileDB.View(func(tx *nutsdb.Tx) error {
+		entries, err := tx.GetAll(bucket)
+		if err != nil {
+			return err
 		}
-		b.ForEach(func(k, v []byte) error {
+
+		for _, entry := range entries {
 			event := &tracing.ExecveEvent{}
-			err := event.GobDecode(k)
+			err := event.GobDecode(entry.Key)
 			if err != nil {
 				return err
 			}
 			events = append(events, event)
-			return nil
-		})
+		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
+
 	return events, nil
 }
 
 func (es *EventSink) GetOpenEvents(namespace string, podName string, containerID string) ([]*tracing.OpenEvent, error) {
 	bucket := fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
 	var events []*tracing.OpenEvent
-	err := es.fileDB.View(func(tx *badger.Tx) error {
-		b := tx.Bucket([]byte(bucket))
-		if b == nil {
-			return nil
+	es.fileDB.View(func(tx *nutsdb.Tx) error {
+		entries, err := tx.GetAll(bucket)
+		if err != nil {
+			return err
 		}
-		b.ForEach(func(k, v []byte) error {
+
+		for _, entry := range entries {
 			event := &tracing.OpenEvent{}
-			err := event.GobDecode(k)
+			err := event.GobDecode(entry.Key)
 			if err != nil {
 				return err
 			}
 			events = append(events, event)
-			return nil
-		})
+		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
+
 	return events, nil
 }
 
