@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/kubescape/kapprofiler/pkg/eventsink"
@@ -18,6 +19,11 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+)
+
+const (
+	RecordStrategyAlways          = "always"
+	RecordStrategyOnlyIfNotExists = "only-if-not-exists"
 )
 
 type ContainerId struct {
@@ -60,6 +66,8 @@ type CollectorManagerConfig struct {
 	K8sConfig *rest.Config
 	// Tracer object
 	Tracer tracing.ITracer
+	// Record strategy
+	RecordStrategy string
 }
 
 func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, error) {
@@ -95,10 +103,28 @@ func (cm *CollectorManager) StopCollectorManager() error {
 }
 
 func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
+	// Check if applicaton profile already exists
+	appProfileExists, err := cm.doesApplicationProfileExists(id.Namespace, id.PodName, true, true)
+	if err != nil {
+		log.Printf("error checking if application profile exists: %s\n", err)
+	} else if appProfileExists {
+		// If application profile exists, check if record strategy is RecordStrategyOnlyIfNotExists
+		if cm.config.RecordStrategy == RecordStrategyOnlyIfNotExists {
+			// Do not start recording events for this container
+			return
+		}
+	}
+
 	// Add container to map with running state set to true
 	cm.containers[*id] = &ContainerState{
 		running: true,
 	}
+
+	// Start event sink filter for container
+	cm.eventSink.AddFilter(&eventsink.EventSinkFilter{
+		ContainerID: id.ContainerID,
+		EventType:   tracing.AllEventType,
+	})
 
 	// Add a timer for collection of data from container events
 	startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
@@ -109,6 +135,9 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 	if _, ok := cm.containers[*id]; ok {
 		// Turn running state to false
 		cm.containers[*id].running = false
+
+		// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
+		cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 	}
 
 	// Collect data from container events
@@ -321,6 +350,61 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		// Restart timer
 		startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 	}
+}
+
+func (cm *CollectorManager) doesApplicationProfileExists(namespace string, podName string, checkFinal bool, checkOwner bool) (bool, error) {
+	workloadKind := "Pod"
+	workloadName := podName
+	if checkOwner {
+		// Get the highest level owner of the pod
+		pod, err := cm.k8sClient.CoreV1().Pods(namespace).Get(context.Background(), podName, v1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		ownerReferences := pod.GetOwnerReferences()
+		if len(ownerReferences) > 0 {
+			for _, owner := range ownerReferences {
+				if owner.Controller != nil && *owner.Controller {
+					workloadKind = owner.Kind
+					workloadName = owner.Name
+					break
+				}
+			}
+			// If ReplicaSet is the owner, get the Deployment
+			if workloadKind == "ReplicaSet" {
+				replicaSet, err := cm.k8sClient.AppsV1().ReplicaSets(namespace).Get(context.Background(), workloadName, v1.GetOptions{})
+				if err != nil {
+					return false, err
+				}
+				ownerReferences := replicaSet.GetOwnerReferences()
+				if len(ownerReferences) > 0 {
+					for _, owner := range ownerReferences {
+						if owner.Controller != nil && *owner.Controller {
+							workloadKind = owner.Kind
+							workloadName = owner.Name
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// The name of the ApplicationProfile you're looking for.
+	appProfileName := fmt.Sprintf("%s-%s", strings.ToLower(workloadKind), strings.ToLower(workloadName))
+
+	// Get the ApplicationProfile object with the name specified above.
+	existingApplicationProfile, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+
+	// if the application profile is final (immutable), we cannot patch it
+	if checkFinal && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.com/final"] != "true" {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // Timer function

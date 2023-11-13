@@ -118,7 +118,7 @@ func (es *EventSink) AddFilter(filter *EventSinkFilter) {
 func (es *EventSink) RemoveFilter(filter *EventSinkFilter) {
 	// Check that it exists
 	for i, f := range es.eventFilters {
-		if f.EventType == filter.EventType && f.ContainerID == filter.ContainerID {
+		if f.ContainerID == filter.ContainerID && (f.EventType == filter.EventType || filter.EventType == tracing.AllEventType) {
 			es.eventFilters = append(es.eventFilters[:i], es.eventFilters[i+1:]...)
 			return
 		}
