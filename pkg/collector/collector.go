@@ -261,7 +261,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
 
 		// Get the ApplicationProfile object with the name specified above.
-		_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
+		existingApplicationProfile, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
 		if err != nil {
 			// it does not exist, create it
 			appProfile := &ApplicationProfile{
@@ -290,6 +290,11 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				log.Printf("error creating application profile: %s\n", err)
 			}
 		} else {
+			// if the application profile is final (immutable), we cannot patch it
+			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.com/final"] == "true" {
+				return
+			}
+
 			appProfile := &ApplicationProfile{}
 
 			// Add container profile to the list of containers
