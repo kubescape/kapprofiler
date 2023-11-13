@@ -108,7 +108,8 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 						APIVersion: collector.ApplicationProfileApiVersion,
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name: profileName,
+						Name:        profileName,
+						Annotations: applicationProfile.GetAnnotations(),
 					},
 					Spec: collector.ApplicationProfileSpec{
 						Containers: applicationProfile.Spec.Containers,
@@ -130,6 +131,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 				}
 
 				deploymentApplicationProfile := &collector.ApplicationProfile{}
+				deploymentApplicationProfile.Annotations = applicationProfile.GetAnnotations()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
 				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
@@ -276,7 +278,8 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 				APIVersion: collector.ApplicationProfileApiVersion,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: applicationProfileNameForController,
+				Name:        applicationProfileNameForController,
+				Annotations: applicationProfile.GetAnnotations(),
 			},
 			Spec: collector.ApplicationProfileSpec{
 				Containers: containers,
@@ -299,6 +302,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 			return
 		}
 		controllerApplicationProfile := &collector.ApplicationProfile{}
+		controllerApplicationProfile.Annotations = applicationProfile.GetAnnotations()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
 		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})

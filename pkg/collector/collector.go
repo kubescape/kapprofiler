@@ -62,6 +62,8 @@ type CollectorManagerConfig struct {
 	EventSink *eventsink.EventSink
 	// Interval in seconds for collecting data from containers
 	Interval uint64
+	// Finalize application profiles time
+	FinalizeTime uint64
 	// Kubernetes configuration
 	K8sConfig *rest.Config
 	// Tracer object
@@ -106,7 +108,7 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
 	// Check if applicaton profile already exists
 	appProfileExists, err := cm.doesApplicationProfileExists(id.Namespace, id.PodName, true, true)
 	if err != nil {
-		log.Printf("error checking if application profile exists: %s\n", err)
+		//log.Printf("error checking if application profile exists: %s\n", err)
 	} else if appProfileExists {
 		// If application profile exists, check if record strategy is RecordStrategyOnlyIfNotExists
 		if cm.config.RecordStrategy == RecordStrategyOnlyIfNotExists {
@@ -128,6 +130,11 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
 
 	// Add a timer for collection of data from container events
 	startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
+
+	if cm.config.FinalizeTime > 0 && cm.config.FinalizeTime > cm.config.Interval {
+		// Add a timer for finalizing the application profile
+		startContainerTimer(id, cm.config.FinalizeTime, cm.FinalizeApplicationProfile)
+	}
 }
 
 func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
@@ -349,6 +356,19 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Restart timer
 		startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
+	}
+}
+
+func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
+	// Check if container is still running (is it in the map?)
+	if _, ok := cm.containers[*id]; ok {
+		// Patch the application profile to make it immutable with the final annotation
+		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
+		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"annotations\":{\"kapprofiler.kubescape.com/final\":\"true\"}}}"), v1.PatchOptions{})
+		if err != nil {
+			log.Printf("error patching application profile: %s\n", err)
+		}
 	}
 }
 
