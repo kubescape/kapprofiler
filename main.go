@@ -102,6 +102,7 @@ func main() {
 		EventSink:      eventSink,
 		Tracer:         tracer,
 		Interval:       60, // 60 seconds for now, TODO: make it configurable
+		FinalizeTime:   0,  // 0 seconds to disable finalization
 		K8sConfig:      k8sConfig,
 		RecordStrategy: collector.RecordStrategyOnlyIfNotExists,
 	}
