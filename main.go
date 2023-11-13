@@ -83,7 +83,7 @@ func main() {
 	}
 
 	// Create the event sink
-	eventSink, err := eventsink.NewEventSink("")
+	eventSink, err := eventsink.NewEventSink("", false)
 	if err != nil {
 		log.Fatalf("Failed to create event sink: %v\n", err)
 	}
