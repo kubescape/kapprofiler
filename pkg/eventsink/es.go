@@ -13,16 +13,23 @@ import (
 
 type EventSink struct {
 	homeDir                  string
+	filterEvents             bool
 	fileDB                   *bolt.DB
 	execveEventChannel       chan *tracing.ExecveEvent
 	openEventChannel         chan *tracing.OpenEvent
 	capabilitiesEventChannel chan *tracing.CapabilitiesEvent
 	dnsEventChannel          chan *tracing.DnsEvent
 	networkEventChannel      chan *tracing.NetworkEvent
+	eventFilters             []*EventSinkFilter
 }
 
-func NewEventSink(homeDir string) (*EventSink, error) {
-	return &EventSink{homeDir: homeDir}, nil
+type EventSinkFilter struct {
+	EventType   tracing.EventType
+	ContainerID string
+}
+
+func NewEventSink(homeDir string, filterEvents bool) (*EventSink, error) {
+	return &EventSink{homeDir: homeDir, filterEvents: filterEvents}, nil
 }
 
 func (es *EventSink) Start() error {
@@ -96,6 +103,26 @@ func (es *EventSink) Stop() error {
 	os.Remove(es.homeDir + "/execve-events.db")
 
 	return nil
+}
+
+func (es *EventSink) AddFilter(filter *EventSinkFilter) {
+	// Check that it doesn't already exist
+	for _, f := range es.eventFilters {
+		if f.EventType == filter.EventType && f.ContainerID == filter.ContainerID {
+			return
+		}
+	}
+	es.eventFilters = append(es.eventFilters, filter)
+}
+
+func (es *EventSink) RemoveFilter(filter *EventSinkFilter) {
+	// Check that it exists
+	for i, f := range es.eventFilters {
+		if f.EventType == filter.EventType && f.ContainerID == filter.ContainerID {
+			es.eventFilters = append(es.eventFilters[:i], es.eventFilters[i+1:]...)
+			return
+		}
+	}
 }
 
 func (es *EventSink) networkEventWorker() error {
@@ -249,46 +276,31 @@ func (es *EventSink) execveEventWorker() error {
 func (es *EventSink) CleanupContainer(namespace string, podName string, containerID string) error {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
 	err := es.fileDB.Update(func(tx *bolt.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
-		}
+		tx.DeleteBucket([]byte(bucket))
 		return nil
 	})
 
 	bucket = fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
 	err = es.fileDB.Update(func(tx *bolt.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
-		}
+		tx.DeleteBucket([]byte(bucket))
 		return nil
 	})
 
 	bucket = fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
 	err = es.fileDB.Update(func(tx *bolt.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
-		}
+		tx.DeleteBucket([]byte(bucket))
 		return nil
 	})
 
 	bucket = fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
 	err = es.fileDB.Update(func(tx *bolt.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
-		}
+		tx.DeleteBucket([]byte(bucket))
 		return nil
 	})
 
 	bucket = fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
 	err = es.fileDB.Update(func(tx *bolt.Tx) error {
-		err := tx.DeleteBucket([]byte(bucket))
-		if err != nil {
-			return err
-		}
+		tx.DeleteBucket([]byte(bucket))
 		return nil
 	})
 
@@ -421,23 +433,83 @@ func (es *EventSink) GetOpenEvents(namespace string, podName string, containerID
 }
 
 func (es *EventSink) SendExecveEvent(event *tracing.ExecveEvent) {
-	es.execveEventChannel <- event
+	if !es.filterEvents {
+		es.execveEventChannel <- event
+		return
+	} else {
+		// Check that there is a matching filter
+		for _, filter := range es.eventFilters {
+			if filter.ContainerID == event.ContainerID &&
+				(filter.EventType == tracing.AllEventType || filter.EventType == tracing.ExecveEventType) {
+				es.execveEventChannel <- event
+				return
+			}
+		}
+	}
 }
 
 func (es *EventSink) SendOpenEvent(event *tracing.OpenEvent) {
-	es.openEventChannel <- event
+	if !es.filterEvents {
+		es.openEventChannel <- event
+		return
+	} else {
+		// Check that there is a matching filter
+		for _, filter := range es.eventFilters {
+			if filter.ContainerID == event.ContainerID &&
+				(filter.EventType == tracing.AllEventType || filter.EventType == tracing.OpenEventType) {
+				es.openEventChannel <- event
+				return
+			}
+		}
+	}
 }
 
 func (es *EventSink) SendCapabilitiesEvent(event *tracing.CapabilitiesEvent) {
-	es.capabilitiesEventChannel <- event
+	if !es.filterEvents {
+		es.capabilitiesEventChannel <- event
+		return
+	} else {
+		// Check that there is a matching filter
+		for _, filter := range es.eventFilters {
+			if filter.ContainerID == event.ContainerID &&
+				(filter.EventType == tracing.AllEventType || filter.EventType == tracing.CapabilitiesEventType) {
+				es.capabilitiesEventChannel <- event
+				return
+			}
+		}
+	}
 }
 
 func (es *EventSink) SendDnsEvent(event *tracing.DnsEvent) {
-	es.dnsEventChannel <- event
+	if !es.filterEvents {
+		es.dnsEventChannel <- event
+		return
+	} else {
+		// Check that there is a matching filter
+		for _, filter := range es.eventFilters {
+			if filter.ContainerID == event.ContainerID &&
+				(filter.EventType == tracing.AllEventType || filter.EventType == tracing.DnsEventType) {
+				es.dnsEventChannel <- event
+				return
+			}
+		}
+	}
 }
 
 func (es *EventSink) SendNetworkEvent(event *tracing.NetworkEvent) {
-	es.networkEventChannel <- event
+	if !es.filterEvents {
+		es.networkEventChannel <- event
+		return
+	} else {
+		// Check that there is a matching filter
+		for _, filter := range es.eventFilters {
+			if filter.ContainerID == event.ContainerID &&
+				(filter.EventType == tracing.AllEventType || filter.EventType == tracing.NetworkEventType) {
+				es.networkEventChannel <- event
+				return
+			}
+		}
+	}
 }
 
 func (es *EventSink) Close() error {

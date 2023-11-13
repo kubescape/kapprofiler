@@ -18,6 +18,7 @@ const (
 	CapabilitiesEventType
 	DnsEventType
 	NetworkEventType
+	AllEventType
 )
 
 type ContainerActivityEventListener interface {
