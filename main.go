@@ -83,7 +83,7 @@ func main() {
 	}
 
 	// Create the event sink
-	eventSink, err := eventsink.NewEventSink("")
+	eventSink, err := eventsink.NewEventSink("", true)
 	if err != nil {
 		log.Fatalf("Failed to create event sink: %v\n", err)
 	}
@@ -99,10 +99,12 @@ func main() {
 
 	// Start the collector manager
 	collectorManagerConfig := &collector.CollectorManagerConfig{
-		EventSink: eventSink,
-		Tracer:    tracer,
-		Interval:  60, // 60 seconds for now, TODO: make it configurable
-		K8sConfig: k8sConfig,
+		EventSink:      eventSink,
+		Tracer:         tracer,
+		Interval:       60, // 60 seconds for now, TODO: make it configurable
+		FinalizeTime:   0,  // 0 seconds to disable finalization
+		K8sConfig:      k8sConfig,
+		RecordStrategy: collector.RecordStrategyOnlyIfNotExists,
 	}
 	cm, err := collector.StartCollectorManager(collectorManagerConfig)
 	if err != nil {

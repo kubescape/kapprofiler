@@ -79,7 +79,7 @@ func TestCollectorBasic(t *testing.T) {
 	}
 
 	// Create an event sink
-	eventSink, err := eventsink.NewEventSink("")
+	eventSink, err := eventsink.NewEventSink("", false)
 	if err != nil {
 		t.Errorf("error creating event sink: %s\n", err)
 	}
@@ -105,9 +105,10 @@ func TestCollectorBasic(t *testing.T) {
 
 	// Exercise
 	containedID := &collector.ContainerId{
-		Namespace: "default",
-		PodName:   "nginx",
-		Container: "app",
+		Namespace:   "default",
+		PodName:     "nginx",
+		Container:   "app",
+		ContainerID: "1234567890",
 	}
 
 	// Start container
@@ -116,10 +117,11 @@ func TestCollectorBasic(t *testing.T) {
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
-			ContainerID: containedID.Container,
-			PodName:     containedID.PodName,
-			Namespace:   containedID.Namespace,
-			Timestamp:   0,
+			ContainerID:   containedID.ContainerID,
+			PodName:       containedID.PodName,
+			Namespace:     containedID.Namespace,
+			ContainerName: containedID.Container,
+			Timestamp:     0,
 		},
 		PathName: "/bin/bash",
 		Args:     []string{"-c", "echo", "HapoelForever"},
@@ -170,16 +172,19 @@ func TestCollectorBasic(t *testing.T) {
 	// Verify length containers
 	if len(appProfile.Spec.Containers) != 1 {
 		t.Errorf("expected 1 container, got %d\n", len(appProfile.Spec.Containers))
+		return
 	}
 
 	// Verify container ID
 	if appProfile.Spec.Containers[0].Name != containedID.Container {
 		t.Errorf("expected container ID %s, got %s\n", containedID.Container, appProfile.Spec.Containers[0].Name)
+		return
 	}
 
 	// Verify length execve events
 	if len(appProfile.Spec.Containers[0].Execs) != 1 {
 		t.Errorf("expected 1 execve event, got %d\n", len(appProfile.Spec.Containers[0].Execs))
+		return
 	}
 
 	// Verify execve event
@@ -199,7 +204,7 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 	}
 
 	// Create an event sink
-	eventSink, err := eventsink.NewEventSink("")
+	eventSink, err := eventsink.NewEventSink("", false)
 	if err != nil {
 		t.Errorf("error creating event sink: %s\n", err)
 	}
@@ -236,10 +241,11 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
-			ContainerID: containedID.Container,
-			PodName:     containedID.PodName,
-			Namespace:   containedID.Namespace,
-			Timestamp:   0,
+			ContainerID:   containedID.Container,
+			ContainerName: containedID.Container,
+			PodName:       containedID.PodName,
+			Namespace:     containedID.Namespace,
+			Timestamp:     0,
 		},
 		PathName: "/bin/bash",
 		Args:     []string{"-c", "echo", "HapoelForever"},

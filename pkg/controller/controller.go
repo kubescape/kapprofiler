@@ -100,7 +100,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 
 		if len(replicaSet.OwnerReferences) > 0 && replicaSet.OwnerReferences[0].Kind == "Deployment" { // If owner of replicaset is a deployment
 			profileName := fmt.Sprintf("deployment-%v", replicaSet.OwnerReferences[0].Name)
-			_, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Get(context.TODO(), profileName, metav1.GetOptions{})
+			existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Get(context.TODO(), profileName, metav1.GetOptions{})
 			if err != nil { // ApplicationProfile doesn't exist for deployment
 				deploymentApplicationProfile := &collector.ApplicationProfile{
 					TypeMeta: metav1.TypeMeta{
@@ -108,7 +108,8 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 						APIVersion: collector.ApplicationProfileApiVersion,
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name: profileName,
+						Name:        profileName,
+						Annotations: applicationProfile.GetAnnotations(),
 					},
 					Spec: collector.ApplicationProfileSpec{
 						Containers: applicationProfile.Spec.Containers,
@@ -123,7 +124,14 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 					return
 				}
 			} else { // ApplicationProfile exists for deployment
+				// Check if the higher level application profile is marked as final (imutable)
+				if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+					// Don't update the application profile
+					return
+				}
+
 				deploymentApplicationProfile := &collector.ApplicationProfile{}
+				deploymentApplicationProfile.Annotations = applicationProfile.GetAnnotations()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
 				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
@@ -262,7 +270,7 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 
 	applicationProfileNameForController := fmt.Sprintf("%s-%s", podControllerKind, podControllerName)
 	// Fetch ApplicationProfile of the controller
-	_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Get(context.TODO(), applicationProfileNameForController, metav1.GetOptions{})
+	existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Get(context.TODO(), applicationProfileNameForController, metav1.GetOptions{})
 	if err != nil { // ApplicationProfile of controller doesn't exist so create a new one
 		controllerApplicationProfile := &collector.ApplicationProfile{
 			TypeMeta: metav1.TypeMeta{
@@ -270,7 +278,8 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 				APIVersion: collector.ApplicationProfileApiVersion,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: applicationProfileNameForController,
+				Name:        applicationProfileNameForController,
+				Annotations: applicationProfile.GetAnnotations(),
 			},
 			Spec: collector.ApplicationProfileSpec{
 				Containers: containers,
@@ -287,7 +296,13 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 			return
 		}
 	} else { // ApplicationProfile of controller exists so update it
+		// Check if the higher level application profile is marked as final (imutable)
+		if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+			// Don't update the application profile
+			return
+		}
 		controllerApplicationProfile := &collector.ApplicationProfile{}
+		controllerApplicationProfile.Annotations = applicationProfile.GetAnnotations()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
 		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})

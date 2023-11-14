@@ -11,7 +11,7 @@ import (
 func TestNewEventSink(t *testing.T) {
 	// Setup
 	// Depending on the implementation, you may have to setup some state here
-	es, err := eventsink.NewEventSink("")
+	es, err := eventsink.NewEventSink("", false)
 	if err != nil {
 		t.Errorf("error creating event sink: %s\n", err)
 	}
@@ -25,10 +25,11 @@ func TestNewEventSink(t *testing.T) {
 	// Exercise
 	es.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
-			ContainerID: "test",
-			PodName:     "test",
-			Namespace:   "test",
-			Timestamp:   0,
+			ContainerID:   "test",
+			ContainerName: "test",
+			PodName:       "test",
+			Namespace:     "test",
+			Timestamp:     0,
 		},
 		PathName: "test",
 		Args:     []string{"test"},
@@ -49,6 +50,7 @@ func TestNewEventSink(t *testing.T) {
 	// Verify that the event was stored
 	if len(events) != 1 {
 		t.Errorf("expected 1 event, got %d\n", len(events))
+		return
 	}
 	if events[0].ContainerID != "test" {
 		t.Errorf("expected container ID test, got %s\n", events[0].ContainerID)
@@ -84,5 +86,88 @@ func TestNewEventSink(t *testing.T) {
 	err = es.CleanupContainer("test", "test", "test")
 	if err != nil {
 		t.Errorf("error cleaning up container: %s\n", err)
+	}
+}
+
+func TestEventSinkWithFilter(t *testing.T) {
+	// Setup
+	// Depending on the implementation, you may have to setup some state here
+	es, err := eventsink.NewEventSink("", true)
+	if err != nil {
+		t.Errorf("error creating event sink: %s\n", err)
+	}
+
+	err = es.Start()
+	if err != nil {
+		t.Errorf("error starting event sink: %s\n", err)
+	}
+	defer es.Stop()
+
+	// Exercise
+	es.SendExecveEvent(&tracing.ExecveEvent{
+		GeneralEvent: tracing.GeneralEvent{
+			ContainerID:   "test",
+			ContainerName: "test",
+			PodName:       "test",
+			Namespace:     "test",
+			Timestamp:     0,
+		},
+		PathName: "test",
+		Args:     []string{"test"},
+		Env:      []string{"test"},
+	})
+
+	// Verify
+
+	// Sleep for a 1 second to allow the event to be
+	// processed
+	time.Sleep(1 * time.Second)
+
+	// Get events
+	events, err := es.GetExecveEvents("test", "test", "test")
+	if err != nil {
+		t.Errorf("error getting execve events: %s\n", err)
+	}
+
+	// Since we did not apply matching filter, we should not get any events
+	if len(events) != 0 {
+		t.Errorf("expected 0 event, got %d\n", len(events))
+	}
+
+	// Add filter
+	es.AddFilter(&eventsink.EventSinkFilter{
+		ContainerID: "test",
+		EventType:   tracing.ExecveEventType,
+	})
+
+	// Send another event
+	es.SendExecveEvent(&tracing.ExecveEvent{
+		GeneralEvent: tracing.GeneralEvent{
+			ContainerID:   "test",
+			ContainerName: "test",
+			PodName:       "test",
+			Namespace:     "test",
+			Timestamp:     0,
+		},
+		PathName: "test",
+		Args:     []string{"test"},
+		Env:      []string{"test"},
+	})
+
+	// Verify
+
+	// Sleep for a 1 second to allow the event to be
+	// processed
+	time.Sleep(1 * time.Second)
+
+	// Get events
+	events, err = es.GetExecveEvents("test", "test", "test")
+	if err != nil {
+		t.Errorf("error getting execve events: %s\n", err)
+	}
+
+	// Since we did not apply matching filter, we should not get any events
+	if len(events) != 1 {
+		t.Errorf("expected 1 event, got %d\n", len(events))
 	}
 }
