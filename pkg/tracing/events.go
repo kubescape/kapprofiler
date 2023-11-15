@@ -18,6 +18,7 @@ const (
 	CapabilitiesEventType
 	DnsEventType
 	NetworkEventType
+	SyscallEventType
 	AllEventType
 )
 
@@ -83,6 +84,12 @@ type NetworkEvent struct {
 	Protocol    string
 	Port        uint16
 	DstEndpoint string
+}
+
+type SyscallEvent struct {
+	GeneralEvent
+
+	Syscalls []string
 }
 
 type EventSink interface {
@@ -395,6 +402,55 @@ func (event *ExecveEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.Env); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Timestamp); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Encode/Decode functions for SyscallEvent
+func (event *SyscallEvent) GobEncode() ([]byte, error) {
+	w := new(bytes.Buffer)
+	encoder := gob.NewEncoder(w)
+	if err := encoder.Encode(event.ContainerName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.ContainerID); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.PodName); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Namespace); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Syscalls); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Timestamp); err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
+func (event *SyscallEvent) GobDecode(buf []byte) error {
+	r := bytes.NewBuffer(buf)
+	decoder := gob.NewDecoder(r)
+	if err := decoder.Decode(&event.ContainerName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.ContainerID); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.PodName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Namespace); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Syscalls); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {

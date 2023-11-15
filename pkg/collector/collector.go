@@ -328,7 +328,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			}
 		} else {
 			// if the application profile is final (immutable), we cannot patch it
-			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.com/final"] == "true" {
+			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
 				// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
 				// This is an optimization to avoid collecting events for containers that are already finalized
 				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
@@ -365,7 +365,7 @@ func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
 		// Patch the application profile to make it immutable with the final annotation
 		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
 		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
-			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"annotations\":{\"kapprofiler.kubescape.com/final\":\"true\"}}}"), v1.PatchOptions{})
+			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"annotations\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), v1.PatchOptions{})
 		if err != nil {
 			log.Printf("error patching application profile: %s\n", err)
 		}
@@ -420,7 +420,7 @@ func (cm *CollectorManager) doesApplicationProfileExists(namespace string, podNa
 	}
 
 	// if the application profile is final (immutable), we cannot patch it
-	if checkFinal && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.com/final"] != "true" {
+	if checkFinal && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] != "true" {
 		return false, nil
 	}
 
