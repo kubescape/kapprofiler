@@ -33,6 +33,7 @@ type ContainerId struct {
 	// Low level identifiers
 	ContainerID string
 	NsMntId     uint64
+	Pid         uint32
 }
 
 type ContainerState struct {
@@ -128,6 +129,12 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
 		EventType:   tracing.AllEventType,
 	})
 
+	// Get all events for this container
+	err = cm.tracer.StartTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
+	if err != nil {
+		log.Printf("error starting tracing container: %s - %v\n", err, id)
+	}
+
 	// Add a timer for collection of data from container events
 	startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 
@@ -142,6 +149,9 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 	if _, ok := cm.containers[*id]; ok {
 		// Turn running state to false
 		cm.containers[*id].running = false
+
+		// Stop tracing container
+		cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
 
 		// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
 		cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
@@ -448,6 +458,7 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			Container:   event.ContainerName,
 			NsMntId:     event.NsMntId,
 			ContainerID: event.ContainerID,
+			Pid:         event.Pid,
 		})
 	} else if event.Activity == tracing.ContainerActivityEventStop {
 		cm.ContainerStopped(&ContainerId{
@@ -456,6 +467,7 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			Container:   event.ContainerName,
 			NsMntId:     event.NsMntId,
 			ContainerID: event.ContainerID,
+			Pid:         event.Pid,
 		})
 	}
 }

@@ -3,15 +3,9 @@ package tracing
 import (
 	"fmt"
 	"log"
+	"sync"
 
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
-	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
-	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
-	tracerdns "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/tracer"
-	tracerexec "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/exec/tracer"
-	tracernetwork "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/tracer"
-	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
-	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 
 	"k8s.io/client-go/rest"
 )
@@ -24,6 +18,8 @@ type ITracer interface {
 	PeekSyscallInContainer(nsMountId uint64) ([]string, error)
 	AddEventSink(sink EventSink)
 	RemoveEventSink(sink EventSink)
+	StartTraceContainer(mntns uint64, pid uint32, eventType EventType) error
+	StopTraceContainer(mntns uint64, pid uint32, eventType EventType) error
 }
 
 type Tracer struct {
@@ -32,19 +28,13 @@ type Tracer struct {
 	filterByLabel bool
 
 	// Internal state
-	running           bool
-	cCollection       *containercollection.ContainerCollection
-	tCollection       *tracercollection.TracerCollection
-	k8sConfig         *rest.Config
-	containerSelector containercollection.ContainerSelector
+	running     bool
+	cCollection *containercollection.ContainerCollection
+	k8sConfig   *rest.Config
 
-	// IG tracers
-	execTracer         *tracerexec.Tracer
-	syscallTracer      *tracerseccomp.Tracer
-	openTracer         *traceropen.Tracer
-	dnsTracer          *tracerdns.Tracer
-	networkTracer      *tracernetwork.Tracer
-	capabilitiesTracer *tracercapabilities.Tracer
+	// Tracing state
+	tracingState      map[EventType]TracingState
+	tracingStateMutex sync.Mutex
 
 	// Trace event sink objects
 	eventSinks []EventSink
@@ -54,11 +44,15 @@ type Tracer struct {
 }
 
 func NewTracer(nodeName string, k8sConfig *rest.Config, eventSinks []EventSink, filterByLabel bool) *Tracer {
+	// Create the tracer state
+	tracingState := make(map[EventType]TracingState)
+
 	return &Tracer{running: false,
 		nodeName:                  nodeName,
 		filterByLabel:             filterByLabel,
 		k8sConfig:                 k8sConfig,
 		eventSinks:                eventSinks,
+		tracingState:              tracingState,
 		containerActivityListener: []ContainerActivityEventListener{}}
 }
 
@@ -129,27 +123,21 @@ func (t *Tracer) PeekSyscallInContainer(nsMountId uint64) ([]string, error) {
 	if t == nil || !t.running {
 		return nil, fmt.Errorf("tracing not running")
 	}
-	return t.syscallTracer.Peek(nsMountId)
+	if t.tracingState[SyscallEventType].peekable == nil {
+		return nil, fmt.Errorf("tracing initialized but not started")
+	}
+	return t.tracingState[SyscallEventType].peekable.Peek(nsMountId)
 }
 
 func (t *Tracer) setupContainerCollection() error {
 	// Use container collection to get notified for new containers
 	containerCollection := &containercollection.ContainerCollection{}
 
-	// Create a tracer collection instance
-	tracerCollection, err := tracercollection.NewTracerCollection(containerCollection)
-	if err != nil {
-		log.Printf("failed to create trace-collection: %s\n", err)
-		return err
-	}
-	t.tCollection = tracerCollection
-
 	// Start the container collection
 	containerEventFuncs := []containercollection.FuncNotify{t.containerEventHandler}
 
 	// Define the different options for the container collection instance
 	opts := []containercollection.ContainerCollectionOption{
-		containercollection.WithTracerCollection(tracerCollection),
 
 		// Get containers created with runc
 		containercollection.WithRuncFanotify(),
@@ -173,11 +161,6 @@ func (t *Tracer) setupContainerCollection() error {
 		return err
 	}
 
-	// Define the container selector for later use
-	if t.filterByLabel {
-		t.containerSelector.K8s.PodLabels = map[string]string{"kapprofiler/enabled": "true"}
-	}
-
 	// Store the container collection instance
 	t.cCollection = containerCollection
 
@@ -186,7 +169,6 @@ func (t *Tracer) setupContainerCollection() error {
 
 func (t *Tracer) stopContainerCollection() error {
 	if t.cCollection != nil {
-		t.tCollection.Close()
 		t.cCollection.Close()
 	}
 	return nil
@@ -200,6 +182,7 @@ func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
 			ContainerName: notif.Container.K8s.ContainerName,
 			NsMntId:       notif.Container.Mntns,
 			ContainerID:   notif.Container.Runtime.ContainerID,
+			Pid:           notif.Container.Pid,
 		}
 		if notif.Type == containercollection.EventTypeAddContainer {
 			activityEvent.Activity = ContainerActivityEventStart
@@ -212,4 +195,69 @@ func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
 		}
 
 	}
+}
+
+func (t *Tracer) StartTraceContainer(mntns uint64, pid uint32, eventType EventType) error {
+	if t == nil || !t.running {
+		return fmt.Errorf("tracing not running")
+	}
+	var eventTypesToStart []EventType
+	if eventType == AllEventType {
+		eventTypesToStart = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType}
+	} else {
+		eventTypesToStart = append(eventTypesToStart, eventType)
+	}
+	for _, startEventType := range eventTypesToStart {
+		if t.tracingState[startEventType].gadget != nil {
+			// Tracing gadget with nsmap control
+			t.tracingStateMutex.Lock()
+			one := uint32(1)
+			mntnsC := uint64(mntns)
+			t.tracingState[startEventType].eBpfContainerFilterMap.Put(&mntnsC, &one)
+			t.tracingState[startEventType].usageReferenceCount[mntns]++
+			t.tracingStateMutex.Unlock()
+		} else if t.tracingState[startEventType].attachable != nil {
+			// Tracing gadget with peekable interface
+			t.tracingStateMutex.Lock()
+			t.tracingState[startEventType].attachable.Attach(pid)
+			t.tracingStateMutex.Unlock()
+		} else {
+			return fmt.Errorf("not a tracable event type")
+		}
+	}
+	return nil
+}
+
+func (t *Tracer) StopTraceContainer(mntns uint64, pid uint32, eventType EventType) error {
+	if t == nil || !t.running {
+		return fmt.Errorf("tracing not running")
+	}
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	var eventTypesToStop []EventType
+	if eventType == AllEventType {
+		eventTypesToStop = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType}
+	} else {
+		eventTypesToStop = append(eventTypesToStop, eventType)
+	}
+	for _, stopEventType := range eventTypesToStop {
+		if t.tracingState[stopEventType].gadget != nil {
+			// Tracing gadget with nsmap control
+			if t.tracingState[stopEventType].usageReferenceCount[mntns] == 0 {
+				continue
+			}
+			t.tracingState[stopEventType].usageReferenceCount[mntns]--
+			if t.tracingState[stopEventType].usageReferenceCount[mntns] == 0 {
+				zero := uint32(0)
+				mntnsC := uint64(mntns)
+				t.tracingState[stopEventType].eBpfContainerFilterMap.Put(&mntnsC, &zero)
+			}
+		} else if t.tracingState[stopEventType].attachable != nil {
+			// Tracing gadget with peekable interface
+			t.tracingState[stopEventType].attachable.Detach(pid)
+		} else {
+			return fmt.Errorf("not a tracable event type")
+		}
+	}
+	return nil
 }
