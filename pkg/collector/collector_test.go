@@ -48,6 +48,14 @@ func (t *TestTracer) AddEventSink(sink tracing.EventSink) {
 func (t *TestTracer) RemoveEventSink(sink tracing.EventSink) {
 }
 
+func (t *TestTracer) StartTraceContainer(mntns uint64, pid uint32, eventType tracing.EventType) error {
+	return nil
+}
+
+func (t *TestTracer) StopTraceContainer(mntns uint64, pid uint32, eventType tracing.EventType) error {
+	return nil
+}
+
 func GetKubernetesConfig() (*rest.Config, error) {
 	// Check if the Kubernetes cluster is reachable
 	// Load the Kubernetes configuration from the default location

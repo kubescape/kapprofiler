@@ -3,7 +3,7 @@ package tracing
 import (
 	"log"
 
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection/networktracer"
+	"github.com/cilium/ebpf"
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
 	tracercapabilities "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/tracer"
 	tracercapabilitiestype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/capabilities/types"
@@ -15,6 +15,7 @@ import (
 	tracernetworktype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/network/types"
 	traceropen "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/tracer"
 	traceropentype "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/open/types"
+	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/utils/host"
 )
@@ -25,6 +26,17 @@ const openTraceName = "trace_open"
 const capabilitiesTraceName = "trace_capabilities"
 const dnsTraceName = "trace_dns"
 const networkTraceName = "trace_network"
+
+func createEbpfMountNsMap(tracerId string) (*ebpf.Map, error) {
+	mntnsSpec := &ebpf.MapSpec{
+		Name:       tracercollection.MountMapPrefix + tracerId,
+		Type:       ebpf.Hash,
+		KeySize:    8,
+		ValueSize:  4,
+		MaxEntries: tracercollection.MaxContainersPerNode,
+	}
+	return ebpf.NewMap(mntnsSpec)
+}
 
 func (t *Tracer) startAppBehaviorTracing() error {
 
@@ -76,11 +88,6 @@ func (t *Tracer) startAppBehaviorTracing() error {
 func (t *Tracer) startNetworkTracing() error {
 	//host.Init(host.Config{AutoMountFilesystems: true})
 
-	if err := t.tCollection.AddTracer(networkTraceName, t.containerSelector); err != nil {
-		log.Printf("error adding tracer: %v\n", err)
-		return err
-	}
-
 	tracerNetwork, err := tracernetwork.NewTracer()
 	if err != nil {
 		log.Printf("error creating tracer: %s\n", err)
@@ -88,35 +95,23 @@ func (t *Tracer) startNetworkTracing() error {
 	}
 	tracerNetwork.SetEventHandler(t.networkEventCallback)
 
-	t.networkTracer = tracerNetwork
-
-	config := &networktracer.ConnectToContainerCollectionConfig[tracernetworktype.Event]{
-		Tracer:   t.networkTracer,
-		Resolver: t.cCollection,
-		Selector: t.containerSelector,
-		Base:     tracernetworktype.Base,
+	t.tracingStateMutex.Lock()
+	t.tracingState[NetworkEventType] = TracingState{
+		usageReferenceCount:    make(map[uint64]int),
+		eBpfContainerFilterMap: nil,
+		gadget:                 nil,
+		attachable:             tracerNetwork,
 	}
-
-	_, err = networktracer.ConnectToContainerCollection(config)
-
-	if err != nil {
-		log.Printf("error creating tracer: %s\n", err)
-		return err
-	}
+	t.tracingStateMutex.Unlock()
 
 	return nil
 }
 
 func (t *Tracer) startCapabilitiesTracing() error {
-	if err := t.tCollection.AddTracer(capabilitiesTraceName, t.containerSelector); err != nil {
-		log.Printf("error adding tracer: %v\n", err)
-		return err
-	}
-
-	// Get mount namespace map to filter by containers
-	capabilitiesMountnsmap, err := t.tCollection.TracerMountNsMap(capabilitiesTraceName)
+	// Create nsmount map to filter by containers
+	capabilitiesMountnsmap, err := createEbpfMountNsMap(capabilitiesTraceName)
 	if err != nil {
-		log.Printf("failed to get capabilitiesMountnsmap: %s\n", err)
+		log.Printf("error creating mountnsmap: %s\n", err)
 		return err
 	}
 
@@ -125,18 +120,21 @@ func (t *Tracer) startCapabilitiesTracing() error {
 		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
-	t.capabilitiesTracer = tracerCapabilities
+
+	t.tracingStateMutex.Lock()
+	t.tracingState[CapabilitiesEventType] = TracingState{
+		usageReferenceCount:    make(map[uint64]int),
+		eBpfContainerFilterMap: capabilitiesMountnsmap,
+		gadget:                 tracerCapabilities,
+		attachable:             nil,
+	}
+	t.tracingStateMutex.Unlock()
 
 	return nil
 }
 
 func (t *Tracer) startDnsTracing() error {
 	host.Init(host.Config{AutoMountFilesystems: true})
-
-	if err := t.tCollection.AddTracer(dnsTraceName, t.containerSelector); err != nil {
-		log.Printf("error adding tracer: %v\n", err)
-		return err
-	}
 
 	tracerDns, err := tracerdns.NewTracer()
 	if err != nil {
@@ -145,35 +143,23 @@ func (t *Tracer) startDnsTracing() error {
 	}
 	tracerDns.SetEventHandler(t.dnsEventCallback)
 
-	t.dnsTracer = tracerDns
-
-	config := &networktracer.ConnectToContainerCollectionConfig[tracerdnstype.Event]{
-		Tracer:   t.dnsTracer,
-		Resolver: t.cCollection,
-		Selector: t.containerSelector,
-		Base:     tracerdnstype.Base,
+	t.tracingStateMutex.Lock()
+	t.tracingState[DnsEventType] = TracingState{
+		usageReferenceCount:    make(map[uint64]int),
+		eBpfContainerFilterMap: nil,
+		gadget:                 nil,
+		attachable:             tracerDns,
 	}
-
-	_, err = networktracer.ConnectToContainerCollection(config)
-
-	if err != nil {
-		log.Printf("error creating tracer: %s\n", err)
-		return err
-	}
+	t.tracingStateMutex.Unlock()
 
 	return nil
 }
 
 func (t *Tracer) startOpenTracing() error {
-	if err := t.tCollection.AddTracer(openTraceName, t.containerSelector); err != nil {
-		log.Printf("error adding tracer: %v\n", err)
-		return err
-	}
-
-	// Get mount namespace map to filter by containers
-	openMountnsmap, err := t.tCollection.TracerMountNsMap(openTraceName)
+	// Create nsmount map to filter by containers
+	openMountnsmap, err := createEbpfMountNsMap(openTraceName)
 	if err != nil {
-		log.Printf("failed to get openMountnsmap: %s\n", err)
+		log.Printf("error creating mountnsmap: %s\n", err)
 		return err
 	}
 
@@ -182,7 +168,15 @@ func (t *Tracer) startOpenTracing() error {
 		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
-	t.openTracer = tracerOpen
+
+	t.tracingStateMutex.Lock()
+	t.tracingState[OpenEventType] = TracingState{
+		usageReferenceCount:    make(map[uint64]int),
+		eBpfContainerFilterMap: openMountnsmap,
+		gadget:                 tracerOpen,
+		attachable:             nil,
+	}
+	t.tracingStateMutex.Unlock()
 
 	return nil
 }
@@ -295,18 +289,8 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 }
 
 func (t *Tracer) startExecTracing() error {
-	// Add exec tracer
-	if err := t.tCollection.AddTracer(execTraceName, t.containerSelector); err != nil {
-		log.Printf("error adding tracer: %s\n", err)
-		return err
-	}
-
-	// Get mount namespace map to filter by containers
-	execMountnsmap, err := t.tCollection.TracerMountNsMap(execTraceName)
-	if err != nil {
-		log.Printf("failed to get execMountnsmap: %s\n", err)
-		return err
-	}
+	// Create nsmount map to filter by containers
+	execMountnsmap, err := createEbpfMountNsMap(execTraceName)
 
 	// Create the exec tracer
 	tracerExec, err := tracerexec.NewTracer(&tracerexec.Config{MountnsMap: execMountnsmap}, t.cCollection, t.execEventCallback)
@@ -314,7 +298,16 @@ func (t *Tracer) startExecTracing() error {
 		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
-	t.execTracer = tracerExec
+
+	t.tracingStateMutex.Lock()
+	t.tracingState[ExecveEventType] = TracingState{
+		usageReferenceCount:    make(map[uint64]int),
+		eBpfContainerFilterMap: execMountnsmap,
+		gadget:                 tracerExec,
+		attachable:             nil,
+	}
+	t.tracingStateMutex.Unlock()
+
 	return nil
 }
 
@@ -325,7 +318,16 @@ func (t *Tracer) startSystemcallTracing() error {
 		log.Printf("error creating tracer: %s\n", err)
 		return err
 	}
-	t.syscallTracer = syscallTracer
+
+	t.tracingStateMutex.Lock()
+	t.tracingState[SyscallEventType] = TracingState{
+		usageReferenceCount:    nil,
+		eBpfContainerFilterMap: nil,
+		gadget:                 nil,
+		attachable:             nil,
+		peekable:               syscallTracer,
+	}
+	t.tracingStateMutex.Unlock()
 	return nil
 }
 
@@ -361,61 +363,55 @@ func (t *Tracer) stopAppBehaviorTracing() error {
 }
 
 func (t *Tracer) stopExecTracing() error {
-	// Stop exec tracer
-	if err := t.tCollection.RemoveTracer(execTraceName); err != nil {
-		log.Printf("error removing tracer: %s\n", err)
-		return err
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[ExecveEventType].gadget != nil {
+		t.tracingState[ExecveEventType].gadget.Stop()
 	}
-	t.execTracer.Stop()
 	return nil
 }
 
 func (t *Tracer) stopDnsTracing() error {
-	// Stop dns tracer
-	if err := t.tCollection.RemoveTracer(dnsTraceName); err != nil {
-		log.Printf("error removing tracer: %s\n", err)
-		return err
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[DnsEventType].attachable != nil {
+		t.tracingState[DnsEventType].attachable.Close()
 	}
-
-	t.dnsTracer.Close()
-
 	return nil
 }
 
 func (t *Tracer) stopNetworkTracing() error {
-	// Stop network tracer
-	if err := t.tCollection.RemoveTracer(networkTraceName); err != nil {
-		log.Printf("error removing tracer: %s\n", err)
-		return err
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[NetworkEventType].attachable != nil {
+		t.tracingState[NetworkEventType].attachable.Close()
 	}
-
-	t.networkTracer.Close()
-
 	return nil
 }
 
 func (t *Tracer) stopOpenTracing() error {
-	// Stop open tracer
-	if err := t.tCollection.RemoveTracer(openTraceName); err != nil {
-		log.Printf("error removing tracer: %s\n", err)
-		return err
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[OpenEventType].gadget != nil {
+		t.tracingState[OpenEventType].gadget.Stop()
 	}
-	t.openTracer.Stop()
 	return nil
 }
 
 func (t *Tracer) stopCapabilitiesTracing() error {
-	// Stop capabilities tracer
-	if err := t.tCollection.RemoveTracer(capabilitiesTraceName); err != nil {
-		log.Printf("error removing tracer: %s\n", err)
-		return err
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[CapabilitiesEventType].gadget != nil {
+		t.tracingState[CapabilitiesEventType].gadget.Stop()
 	}
-	t.capabilitiesTracer.Stop()
 	return nil
 }
 
 func (t *Tracer) stopSystemcallTracing() error {
-	// Stop seccomp tracer
-	t.syscallTracer.Close()
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[SyscallEventType].peekable != nil {
+		t.tracingState[SyscallEventType].peekable.Close()
+	}
 	return nil
 }

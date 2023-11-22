@@ -35,6 +35,7 @@ type ContainerActivityEvent struct {
 	// Low level container information
 	ContainerID string
 	NsMntId     uint64
+	Pid         uint32
 }
 
 type GeneralEvent struct {
