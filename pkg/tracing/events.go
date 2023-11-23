@@ -43,6 +43,8 @@ type GeneralEvent struct {
 	ContainerID   string
 	PodName       string
 	Namespace     string
+	Pid           uint32
+	MountNsID     uint64
 	Timestamp     int64
 	EventType     EventType
 }
@@ -59,7 +61,7 @@ type OpenEvent struct {
 	GeneralEvent
 
 	TaskName string
-	TaskId   int
+	TaskId   uint32
 	PathName string
 	Flags    []string
 }
@@ -134,6 +136,12 @@ func (event *NetworkEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.DstEndpoint); err != nil {
 		return nil, err
 	}
+	if err := encoder.Encode(event.Pid); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.MountNsID); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
 		return nil, err
 	}
@@ -167,6 +175,12 @@ func (event *NetworkEvent) GobDecode(buf []byte) error {
 	if err := decoder.Decode(&event.DstEndpoint); err != nil {
 		return err
 	}
+	if err := decoder.Decode(&event.Pid); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.MountNsID); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
 		return err
 	}
@@ -195,6 +209,12 @@ func (event *DnsEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.Addresses); err != nil {
 		return nil, err
 	}
+	if err := encoder.Encode(event.Pid); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.MountNsID); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
 		return nil, err
 	}
@@ -220,6 +240,12 @@ func (event *DnsEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.Addresses); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Pid); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.MountNsID); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
@@ -250,6 +276,12 @@ func (event *CapabilitiesEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.CapabilityName); err != nil {
 		return nil, err
 	}
+	if err := encoder.Encode(event.Pid); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.MountNsID); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
 		return nil, err
 	}
@@ -275,6 +307,12 @@ func (event *CapabilitiesEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.CapabilityName); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Pid); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.MountNsID); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
@@ -311,6 +349,12 @@ func (event *OpenEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.Flags); err != nil {
 		return nil, err
 	}
+	if err := encoder.Encode(event.Pid); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.MountNsID); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
 		return nil, err
 	}
@@ -344,6 +388,12 @@ func (event *OpenEvent) GobDecode(buf []byte) error {
 	if err := decoder.Decode(&event.Flags); err != nil {
 		return err
 	}
+	if err := decoder.Decode(&event.Pid); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.MountNsID); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
 		return err
 	}
@@ -373,6 +423,12 @@ func (event *ExecveEvent) GobEncode() ([]byte, error) {
 		return nil, err
 	}
 	if err := encoder.Encode(event.Env); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.Pid); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.MountNsID); err != nil {
 		return nil, err
 	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
@@ -405,6 +461,12 @@ func (event *ExecveEvent) GobDecode(buf []byte) error {
 	if err := decoder.Decode(&event.Env); err != nil {
 		return err
 	}
+	if err := decoder.Decode(&event.Pid); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.MountNsID); err != nil {
+		return err
+	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
 		return err
 	}
@@ -430,6 +492,12 @@ func (event *SyscallEvent) GobEncode() ([]byte, error) {
 	if err := encoder.Encode(event.Syscalls); err != nil {
 		return nil, err
 	}
+	if err := encoder.Encode(event.Pid); err != nil {
+		return nil, err
+	}
+	if err := encoder.Encode(event.MountNsID); err != nil {
+		return nil, err
+	}
 	if err := encoder.Encode(event.Timestamp); err != nil {
 		return nil, err
 	}
@@ -452,6 +520,12 @@ func (event *SyscallEvent) GobDecode(buf []byte) error {
 		return err
 	}
 	if err := decoder.Decode(&event.Syscalls); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.Pid); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&event.MountNsID); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&event.Timestamp); err != nil {
