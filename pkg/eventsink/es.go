@@ -41,19 +41,19 @@ func (es *EventSink) Start() error {
 
 	// Create the channel for execve events
 	es.execveEventChannel = make(chan *tracing.ExecveEvent, 10000)
-	es.execvEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.ExecveEvent](10000)
+	es.execvEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.ExecveEvent](100)
 	// Create the channel for the open events
 	es.openEventChannel = make(chan *tracing.OpenEvent, 10000)
-	es.openEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.OpenEvent](10000)
+	es.openEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.OpenEvent](100)
 	// Create the channel for the capabilities events
 	es.capabilitiesEventChannel = make(chan *tracing.CapabilitiesEvent, 10000)
-	es.capabilitiesEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.CapabilitiesEvent](10000)
+	es.capabilitiesEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.CapabilitiesEvent](100)
 	// Create the channel for the dns events
 	es.dnsEventChannel = make(chan *tracing.DnsEvent, 10000)
-	es.dnsEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.DnsEvent](10000)
+	es.dnsEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.DnsEvent](100)
 	// Create the channel for the network events
 	es.networkEventChannel = make(chan *tracing.NetworkEvent, 10000)
-	es.networkEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.NetworkEvent](10000)
+	es.networkEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.NetworkEvent](100)
 	// Start the execve event worker
 	go es.execveEventWorker()
 
