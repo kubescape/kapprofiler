@@ -43,6 +43,7 @@ type GeneralEvent struct {
 	ContainerID   string
 	PodName       string
 	Namespace     string
+	Pid           uint32
 	Timestamp     int64
 	EventType     EventType
 }
