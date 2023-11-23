@@ -3,9 +3,13 @@ package tracing
 import (
 	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
+	igtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
+
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils/types"
 
 	"k8s.io/client-go/rest"
 )
@@ -72,8 +76,26 @@ func (t *Tracer) Start() error {
 		}
 
 		t.running = true
+
+		// Generate a list of running containers
+		t.GenerateContainerEventsOnStart()
 	}
 	return nil
+}
+
+func (t *Tracer) GenerateContainerEventsOnStart() {
+	// Generate a list of running containers
+	containers, err := t.GetListOfRunningContainers()
+	if err != nil {
+		log.Printf("error getting list of running containers: %s\n", err)
+	} else {
+		for _, container := range *containers {
+			container.Activity = ContainerActivityEventAttached
+			for _, containerActivityListener := range t.containerActivityListener {
+				containerActivityListener.OnContainerActivityEvent(&container)
+			}
+		}
+	}
 }
 
 func (t *Tracer) Stop() error {
@@ -138,7 +160,6 @@ func (t *Tracer) setupContainerCollection() error {
 
 	// Define the different options for the container collection instance
 	opts := []containercollection.ContainerCollectionOption{
-
 		// Get containers created with runc
 		containercollection.WithRuncFanotify(),
 
@@ -153,6 +174,30 @@ func (t *Tracer) setupContainerCollection() error {
 
 		// Get Notifications from the container collection
 		containercollection.WithPubSub(containerEventFuncs...),
+	}
+
+	containerRuntimeName := os.Getenv("CONTAINER_RUNTIME_NAME")
+	containerRuntimeSocket := os.Getenv("CONTAINER_RUNTIME_SOCKET")
+	if containerRuntimeName != "" && containerRuntimeSocket != "" {
+		// Add the container runtime to the container collection
+		opts = append(opts, containercollection.WithContainerRuntimeEnrichment(&types.RuntimeConfig{
+			Name:       igtypes.RuntimeName(containerRuntimeName),
+			SocketPath: containerRuntimeSocket,
+		}))
+	} else if containerRuntimeName != "" || containerRuntimeSocket != "" {
+		return fmt.Errorf("both CONTAINER_RUNTIME_NAME and CONTAINER_RUNTIME_SOCKET environment variables must be set")
+	} else {
+		// Read the HOST_ROOT environment variable
+		hostRootMount := os.Getenv("HOST_ROOT")
+
+		// Detect the container runtime
+		runtimeConfig, err := DetectContainerRuntime(hostRootMount)
+		if err != nil {
+			log.Printf("failed to detect container runtime: %s\n", err)
+		} else {
+			// Add the container runtime to the container collection
+			opts = append(opts, containercollection.WithContainerRuntimeEnrichment(runtimeConfig))
+		}
 	}
 
 	// Initialize the container collection
@@ -175,6 +220,11 @@ func (t *Tracer) stopContainerCollection() error {
 }
 
 func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
+	if !t.running {
+		// Ignore events if tracing is not running
+		// These events are replac
+		return
+	}
 	if t.containerActivityListener != nil && len(t.containerActivityListener) > 0 {
 		activityEvent := &ContainerActivityEvent{
 			PodName:       notif.Container.K8s.PodName,
@@ -199,7 +249,7 @@ func (t *Tracer) containerEventHandler(notif containercollection.PubSubEvent) {
 
 func (t *Tracer) StartTraceContainer(mntns uint64, pid uint32, eventType EventType) error {
 	if t == nil || !t.running {
-		return fmt.Errorf("tracing not running")
+		return fmt.Errorf("tracing not running (running %v)", t.running)
 	}
 	var eventTypesToStart []EventType
 	if eventType == AllEventType {
@@ -260,4 +310,26 @@ func (t *Tracer) StopTraceContainer(mntns uint64, pid uint32, eventType EventTyp
 		}
 	}
 	return nil
+}
+
+func (t *Tracer) GetListOfRunningContainers() (*[]ContainerActivityEvent, error) {
+	if t == nil || !t.running {
+		return nil, fmt.Errorf("tracing not running")
+	}
+
+	containers := t.cCollection.GetContainersBySelector(&containercollection.ContainerSelector{})
+	var containerActivityEvents []ContainerActivityEvent
+	for _, container := range containers {
+		containerActivityEvents = append(containerActivityEvents, ContainerActivityEvent{
+			PodName:       container.K8s.PodName,
+			Namespace:     container.K8s.Namespace,
+			ContainerName: container.K8s.ContainerName,
+			NsMntId:       container.Mntns,
+			ContainerID:   container.Runtime.ContainerID,
+			Pid:           container.Pid,
+			Activity:      ContainerActivityEventStart,
+		})
+	}
+
+	return &containerActivityEvents, nil
 }

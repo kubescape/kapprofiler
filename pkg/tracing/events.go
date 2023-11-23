@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	ContainerActivityEventStart = "start"
-	ContainerActivityEventStop  = "stop"
+	ContainerActivityEventStart    = "start"
+	ContainerActivityEventAttached = "attached"
+	ContainerActivityEventStop     = "stop"
 )
 
 type EventType int

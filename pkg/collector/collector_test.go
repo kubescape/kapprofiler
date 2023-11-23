@@ -120,7 +120,7 @@ func TestCollectorBasic(t *testing.T) {
 	}
 
 	// Start container
-	cm.ContainerStarted(containedID)
+	cm.ContainerStarted(containedID, false)
 
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
@@ -246,7 +246,7 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 	}
 
 	// Start container
-	cm.ContainerStarted(containedID)
+	cm.ContainerStarted(containedID, false)
 
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
