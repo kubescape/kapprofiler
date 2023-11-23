@@ -7,6 +7,9 @@ import (
 	"sync"
 
 	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
+	igtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
+
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils/types"
 
 	"k8s.io/client-go/rest"
 )
@@ -173,16 +176,28 @@ func (t *Tracer) setupContainerCollection() error {
 		containercollection.WithPubSub(containerEventFuncs...),
 	}
 
-	// Read the HOST_ROOT environment variable
-	hostRootMount := os.Getenv("HOST_ROOT")
-
-	// Detect the container runtime
-	runtimeConfig, err := DetectContainerRuntime(hostRootMount)
-	if err != nil {
-		log.Printf("failed to detect container runtime: %s\n", err)
-	} else {
+	containerRuntimeName := os.Getenv("CONTAINER_RUNTIME_NAME")
+	containerRuntimeSocket := os.Getenv("CONTAINER_RUNTIME_SOCKET")
+	if containerRuntimeName != "" && containerRuntimeSocket != "" {
 		// Add the container runtime to the container collection
-		opts = append(opts, containercollection.WithContainerRuntimeEnrichment(runtimeConfig))
+		opts = append(opts, containercollection.WithContainerRuntimeEnrichment(&types.RuntimeConfig{
+			Name:       igtypes.RuntimeName(containerRuntimeName),
+			SocketPath: containerRuntimeSocket,
+		}))
+	} else if containerRuntimeName != "" || containerRuntimeSocket != "" {
+		return fmt.Errorf("both CONTAINER_RUNTIME_NAME and CONTAINER_RUNTIME_SOCKET environment variables must be set")
+	} else {
+		// Read the HOST_ROOT environment variable
+		hostRootMount := os.Getenv("HOST_ROOT")
+
+		// Detect the container runtime
+		runtimeConfig, err := DetectContainerRuntime(hostRootMount)
+		if err != nil {
+			log.Printf("failed to detect container runtime: %s\n", err)
+		} else {
+			// Add the container runtime to the container collection
+			opts = append(opts, containercollection.WithContainerRuntimeEnrichment(runtimeConfig))
+		}
 	}
 
 	// Initialize the container collection
