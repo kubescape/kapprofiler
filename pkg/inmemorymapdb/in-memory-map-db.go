@@ -19,6 +19,7 @@ func NewInMemoryMapDB[T any](defaultInitalCap int) *InMemoryMapDB[T] {
 func (db *InMemoryMapDB[T]) Put(key string, value T) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
+	// TODO: use lock per key instead of global lock
 	if _, ok := db.m[key]; !ok {
 		if _, ok := db.m[key]; !ok {
 			db.m[key] = make([]T, 0, db.defaultInitalCap)
