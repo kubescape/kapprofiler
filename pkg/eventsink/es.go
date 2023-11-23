@@ -2,25 +2,30 @@ package eventsink
 
 import (
 	"fmt"
-	"os"
 
+	"github.com/kubescape/kapprofiler/pkg/inmemorymapdb"
 	"github.com/kubescape/kapprofiler/pkg/tracing"
-
-	"log"
-
-	nutsdb "github.com/nutsdb/nutsdb"
 )
 
 type EventSink struct {
-	homeDir                  string
-	filterEvents             bool
-	fileDB                   *nutsdb.DB
-	execveEventChannel       chan *tracing.ExecveEvent
-	openEventChannel         chan *tracing.OpenEvent
+	filterEvents bool
+
+	execveEventChannel chan *tracing.ExecveEvent
+	execvEventDB       *inmemorymapdb.InMemoryMapDB[*tracing.ExecveEvent]
+
+	openEventChannel chan *tracing.OpenEvent
+	openEventDB      *inmemorymapdb.InMemoryMapDB[*tracing.OpenEvent]
+
 	capabilitiesEventChannel chan *tracing.CapabilitiesEvent
-	dnsEventChannel          chan *tracing.DnsEvent
-	networkEventChannel      chan *tracing.NetworkEvent
-	eventFilters             []*EventSinkFilter
+	capabilitiesEventDB      *inmemorymapdb.InMemoryMapDB[*tracing.CapabilitiesEvent]
+
+	dnsEventChannel chan *tracing.DnsEvent
+	dnsEventDB      *inmemorymapdb.InMemoryMapDB[*tracing.DnsEvent]
+
+	networkEventChannel chan *tracing.NetworkEvent
+	networkEventDB      *inmemorymapdb.InMemoryMapDB[*tracing.NetworkEvent]
+
+	eventFilters []*EventSinkFilter
 }
 
 type EventSinkFilter struct {
@@ -29,41 +34,26 @@ type EventSinkFilter struct {
 }
 
 func NewEventSink(homeDir string, filterEvents bool) (*EventSink, error) {
-	return &EventSink{homeDir: homeDir, filterEvents: filterEvents}, nil
+	return &EventSink{filterEvents: filterEvents}, nil
 }
 
 func (es *EventSink) Start() error {
-	// Setup nutsdb database
-	if es.homeDir == "" {
-		// TODO: Use a better default
-		es.homeDir = "/tmp"
-	}
-	
-	db, err := nutsdb.Open(
-		nutsdb.DefaultOptions,
-		nutsdb.WithDir(es.homeDir+"/execve-events.db"),
-		nutsdb.WithRWMode(nutsdb.FileIO),
-	)
-	if err != nil {
-		return err
-	}
-	es.fileDB = db
 
 	// Create the channel for execve events
 	es.execveEventChannel = make(chan *tracing.ExecveEvent, 10000)
-
+	es.execvEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.ExecveEvent](10000)
 	// Create the channel for the open events
 	es.openEventChannel = make(chan *tracing.OpenEvent, 10000)
-
+	es.openEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.OpenEvent](10000)
 	// Create the channel for the capabilities events
 	es.capabilitiesEventChannel = make(chan *tracing.CapabilitiesEvent, 10000)
-
+	es.capabilitiesEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.CapabilitiesEvent](10000)
 	// Create the channel for the dns events
 	es.dnsEventChannel = make(chan *tracing.DnsEvent, 10000)
-
+	es.dnsEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.DnsEvent](10000)
 	// Create the channel for the network events
 	es.networkEventChannel = make(chan *tracing.NetworkEvent, 10000)
-
+	es.networkEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.NetworkEvent](10000)
 	// Start the execve event worker
 	go es.execveEventWorker()
 
@@ -98,15 +88,6 @@ func (es *EventSink) Stop() error {
 	// Close the channel for network events
 	close(es.networkEventChannel)
 
-	// Close the nuts database
-	err := es.fileDB.Close()
-	if err != nil {
-		return err
-	}
-
-	// Delete nutsdb file
-	os.Remove(es.homeDir + "/execve-events.db")
-
 	return nil
 }
 
@@ -133,22 +114,7 @@ func (es *EventSink) RemoveFilter(filter *EventSinkFilter) {
 func (es *EventSink) networkEventWorker() error {
 	for event := range es.networkEventChannel {
 		bucket := fmt.Sprintf("network-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
-		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
-			sEvent, err := event.GobEncode()
-			if err != nil {
-				log.Printf("error encoding network event: %s\n", err)
-				return err
-			}
-			err = tx.Put(bucket, sEvent, nil, 0)
-			if err != nil {
-				log.Printf("error storing network event: %s\n", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			log.Printf("error storing network event: %s\n", err)
-		}
+		es.networkEventDB.Put(bucket, event)
 	}
 
 	return nil
@@ -157,22 +123,7 @@ func (es *EventSink) networkEventWorker() error {
 func (es *EventSink) dnsEventWorker() error {
 	for event := range es.dnsEventChannel {
 		bucket := fmt.Sprintf("dns-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
-		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
-			sEvent, err := event.GobEncode()
-			if err != nil {
-				log.Printf("error encoding dns event: %s\n", err)
-				return err
-			}
-			err = tx.Put(bucket, sEvent, nil, 0)
-			if err != nil {
-				log.Printf("error storing dns event: %s\n", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			log.Printf("error storing dns event: %s\n", err)
-		}
+		es.dnsEventDB.Put(bucket, event)
 	}
 
 	return nil
@@ -181,22 +132,7 @@ func (es *EventSink) dnsEventWorker() error {
 func (es *EventSink) capabilitiesEventWorker() error {
 	for event := range es.capabilitiesEventChannel {
 		bucket := fmt.Sprintf("capabilities-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
-		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
-			sEvent, err := event.GobEncode()
-			if err != nil {
-				log.Printf("error encoding capabilities event: %s\n", err)
-				return err
-			}
-			err = tx.Put(bucket, sEvent, nil, 0)
-			if err != nil {
-				log.Printf("error storing capabilities event: %s\n", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			log.Printf("error storing capabilities event: %s\n", err)
-		}
+		es.capabilitiesEventDB.Put(bucket, event)
 	}
 
 	return nil
@@ -205,49 +141,16 @@ func (es *EventSink) capabilitiesEventWorker() error {
 func (es *EventSink) openEventWorker() error {
 	for event := range es.openEventChannel {
 		bucket := fmt.Sprintf("open-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
-		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
-			sEvent, err := event.GobEncode()
-			if err != nil {
-				log.Printf("error encoding open event: %s\n", err)
-				return err
-			}
-			err = tx.Put(bucket, sEvent, nil, 0)
-			if err != nil {
-				log.Printf("error storing open event: %s\n", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			log.Printf("error storing open event: %s\n", err)
-		}
+		es.openEventDB.Put(bucket, event)
 	}
 
 	return nil
 }
 
 func (es *EventSink) execveEventWorker() error {
-	// TODO: Implement this with batch writes
-
-	// Wait for execve events and store them in the database
 	for event := range es.execveEventChannel {
 		bucket := fmt.Sprintf("execve-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
-		err := es.fileDB.Update(func(tx *nutsdb.Tx) error {
-			sEvent, err := event.GobEncode()
-			if err != nil {
-				log.Printf("error encoding execve event: %s\n", err)
-				return err
-			}
-			err = tx.Put(bucket, sEvent, nil, 0)
-			if err != nil {
-				log.Printf("error storing execve event: %s\n", err)
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			log.Printf("error storing execve event: %s\n", err)
-		}
+		es.execvEventDB.Put(bucket, event)
 	}
 
 	return nil
@@ -255,161 +158,46 @@ func (es *EventSink) execveEventWorker() error {
 
 func (es *EventSink) CleanupContainer(namespace string, podName string, containerID string) error {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
-	if err := es.fileDB.Update(
-		func(tx *nutsdb.Tx) error {
-			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
-		}); err != nil {
-		log.Printf("error deleting bucket: %s\n", err)
-		}
-
+	es.execvEventDB.Delete(bucket)
 
 	bucket = fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
-	if err := es.fileDB.Update(
-		func(tx *nutsdb.Tx) error {
-			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
-		}); err != nil {
-		log.Printf("error deleting bucket: %s\n", err)
-		}
+	es.openEventDB.Delete(bucket)
 
 	bucket = fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
-	if err := es.fileDB.Update(
-		func(tx *nutsdb.Tx) error {
-			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
-		}); err != nil {
-		log.Printf("error deleting bucket: %s\n", err)
-		}
+	es.capabilitiesEventDB.Delete(bucket)
 
 	bucket = fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
-	if err := es.fileDB.Update(
-		func(tx *nutsdb.Tx) error {
-			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
-		}); err != nil {
-		log.Printf("error deleting bucket: %s\n", err)
-		}
+	es.dnsEventDB.Delete(bucket)
 
 	bucket = fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
-	if err := es.fileDB.Update(
-		func(tx *nutsdb.Tx) error {
-			return tx.DeleteBucket(nutsdb.DataStructureBTree,bucket)
-		}); err != nil {
-		log.Printf("error deleting bucket: %s\n", err)
-		}
+	es.networkEventDB.Delete(bucket)
+
 	return nil
-	}
+}
 
 func (es *EventSink) GetNetworkEvents(namespace string, podName string, containerID string) ([]*tracing.NetworkEvent, error) {
 	bucket := fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
-	var events []*tracing.NetworkEvent
-	es.fileDB.View(func(tx *nutsdb.Tx) error {
-		entries, err := tx.GetAll(bucket)
-		if err != nil {
-			return err
-		}
-
-		for _, entry := range entries {
-			event := &tracing.NetworkEvent{}
-			err := event.GobDecode(entry.Key)
-			if err != nil {
-				return err
-			}
-			events = append(events, event)
-		}
-		return nil
-	})
-
-	return events, nil
+	return es.networkEventDB.GetNClean(bucket), nil
 }
 
 func (es *EventSink) GetDnsEvents(namespace string, podName string, containerID string) ([]*tracing.DnsEvent, error) {
 	bucket := fmt.Sprintf("dns-%s-%s-%s", namespace, podName, containerID)
-	var events []*tracing.DnsEvent
-	es.fileDB.View(func(tx *nutsdb.Tx) error {
-		entries, err := tx.GetAll(bucket)
-		if err != nil {
-			return err
-		}
-
-		for _, entry := range entries {
-			event := &tracing.DnsEvent{}
-			err := event.GobDecode(entry.Key)
-			if err != nil {
-				return err
-			}
-			events = append(events, event)
-		}
-		return nil
-	})
-
-	return events, nil
+	return es.dnsEventDB.GetNClean(bucket), nil
 }
 
 func (es *EventSink) GetCapabilitiesEvents(namespace string, podName string, containerID string) ([]*tracing.CapabilitiesEvent, error) {
 	bucket := fmt.Sprintf("capabilities-%s-%s-%s", namespace, podName, containerID)
-	var events []*tracing.CapabilitiesEvent
-	es.fileDB.View(func(tx *nutsdb.Tx) error {
-		entries, err := tx.GetAll(bucket)
-		if err != nil {
-			return err
-		}
-
-		for _, entry := range entries {
-			event := &tracing.CapabilitiesEvent{}
-			err := event.GobDecode(entry.Key)
-			if err != nil {
-				return err
-			}
-			events = append(events, event)
-		}
-		return nil
-	})
-
-	return events, nil
+	return es.capabilitiesEventDB.GetNClean(bucket), nil
 }
 
 func (es *EventSink) GetExecveEvents(namespace string, podName string, containerID string) ([]*tracing.ExecveEvent, error) {
 	bucket := fmt.Sprintf("execve-%s-%s-%s", namespace, podName, containerID)
-	var events []*tracing.ExecveEvent
-	es.fileDB.View(func(tx *nutsdb.Tx) error {
-		entries, err := tx.GetAll(bucket)
-		if err != nil {
-			return err
-		}
-
-		for _, entry := range entries {
-			event := &tracing.ExecveEvent{}
-			err := event.GobDecode(entry.Key)
-			if err != nil {
-				return err
-			}
-			events = append(events, event)
-		}
-		return nil
-	})
-
-	return events, nil
+	return es.execvEventDB.GetNClean(bucket), nil
 }
 
 func (es *EventSink) GetOpenEvents(namespace string, podName string, containerID string) ([]*tracing.OpenEvent, error) {
 	bucket := fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
-	var events []*tracing.OpenEvent
-	es.fileDB.View(func(tx *nutsdb.Tx) error {
-		entries, err := tx.GetAll(bucket)
-		if err != nil {
-			return err
-		}
-
-		for _, entry := range entries {
-			event := &tracing.OpenEvent{}
-			err := event.GobDecode(entry.Key)
-			if err != nil {
-				return err
-			}
-			events = append(events, event)
-		}
-		return nil
-	})
-
-	return events, nil
+	return es.openEventDB.GetNClean(bucket), nil
 }
 
 func (es *EventSink) SendExecveEvent(event *tracing.ExecveEvent) {
@@ -493,5 +281,11 @@ func (es *EventSink) SendNetworkEvent(event *tracing.NetworkEvent) {
 }
 
 func (es *EventSink) Close() error {
-	return es.fileDB.Close()
+	es.execvEventDB.Close()
+	es.openEventDB.Close()
+	es.capabilitiesEventDB.Close()
+	es.dnsEventDB.Close()
+	es.networkEventDB.Close()
+
+	return nil
 }
