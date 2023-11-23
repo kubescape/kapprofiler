@@ -37,7 +37,8 @@ type ContainerId struct {
 }
 
 type ContainerState struct {
-	running bool
+	running  bool
+	attached bool
 }
 
 type CollectorManager struct {
@@ -105,7 +106,7 @@ func (cm *CollectorManager) StopCollectorManager() error {
 	return nil
 }
 
-func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
+func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 	// Check if applicaton profile already exists
 	appProfileExists, err := cm.doesApplicationProfileExists(id.Namespace, id.PodName, true, true)
 	if err != nil {
@@ -120,7 +121,8 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId) {
 
 	// Add container to map with running state set to true
 	cm.containers[*id] = &ContainerState{
-		running: true,
+		running:  true,
+		attached: attach,
 	}
 
 	// Start event sink filter for container
@@ -323,6 +325,9 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 					Containers: []ContainerProfile{containerProfile},
 				},
 			}
+			if cm.containers[*id].attached {
+				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
+			}
 			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
@@ -459,7 +464,7 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			NsMntId:     event.NsMntId,
 			ContainerID: event.ContainerID,
 			Pid:         event.Pid,
-		})
+		}, false)
 	} else if event.Activity == tracing.ContainerActivityEventStop {
 		cm.ContainerStopped(&ContainerId{
 			Namespace:   event.Namespace,
@@ -469,6 +474,15 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			ContainerID: event.ContainerID,
 			Pid:         event.Pid,
 		})
+	} else if event.Activity == tracing.ContainerActivityEventAttached {
+		cm.ContainerStarted(&ContainerId{
+			Namespace:   event.Namespace,
+			PodName:     event.PodName,
+			Container:   event.ContainerName,
+			NsMntId:     event.NsMntId,
+			ContainerID: event.ContainerID,
+			Pid:         event.Pid,
+		}, true)
 	}
 }
 

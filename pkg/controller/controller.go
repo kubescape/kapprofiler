@@ -86,6 +86,11 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 		return
 	}
 
+	// If the application profile is marked as partial, do not propagate it
+	if applicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+		return
+	}
+
 	// Get Object name from ApplicationProfile. Application profile name has the kind in as the the prefix like deployment-nginx
 	objectName := strings.Join(strings.Split(applicationProfile.ObjectMeta.Name, "-")[1:], "-")
 	//kind := strings.Split(applicationProfile.ObjectMeta.Name, "-")[0]
