@@ -262,7 +262,7 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 			},
 			PathName: event.FullPath,
 			TaskName: event.Comm,
-			TaskId:   int(event.Pid),
+			TaskId:   event.Pid,
 			Flags:    event.Flags,
 		}
 		for _, eventSink := range t.eventSinks {
