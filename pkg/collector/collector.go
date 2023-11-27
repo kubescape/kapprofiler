@@ -186,7 +186,11 @@ func (cm *CollectorManager) loadTotalEvents(containerId *ContainerId) (*TotalEve
 
 	syscallEvents, err := cm.tracer.PeekSyscallInContainer(containerId.NsMntId)
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "no syscall found") {
+			syscallEvents = []string{}
+		} else {
+			return nil, err
+		}
 	}
 
 	capabilitiesEvents, err := cm.eventSink.GetCapabilitiesEvents(containerId.Namespace, containerId.PodName, containerId.Container)
@@ -365,6 +369,11 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 			appProfile := &ApplicationProfile{}
 
+			// If not attached (seen the container from the start) and partial annotation is set, remove it
+			if !cm.containers[*id].attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
+			}
+
 			// Add container profile to the list of containers
 			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
 
@@ -515,14 +524,11 @@ func dnsEventExists(dnsEvent *tracing.DnsEvent, dnsCalls []DnsCalls) bool {
 			for _, address := range dnsEvent.Addresses {
 				if !slices.Contains(call.Addresses, address) {
 					call.Addresses = append(call.Addresses, address)
-					log.Print("Event exists, appending missing address")
 				}
 			}
-
 			return true
 		}
 	}
-
 	return false
 }
 
