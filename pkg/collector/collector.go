@@ -369,6 +369,11 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 			appProfile := &ApplicationProfile{}
 
+			// If not attached (seen the container from the start) and partial annotation is set, remove it
+			if !cm.containers[*id].attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
+			}
+
 			// Add container profile to the list of containers
 			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
 
@@ -519,14 +524,11 @@ func dnsEventExists(dnsEvent *tracing.DnsEvent, dnsCalls []DnsCalls) bool {
 			for _, address := range dnsEvent.Addresses {
 				if !slices.Contains(call.Addresses, address) {
 					call.Addresses = append(call.Addresses, address)
-					log.Print("Event exists, appending missing address")
 				}
 			}
-
 			return true
 		}
 	}
-
 	return false
 }
 
