@@ -186,7 +186,11 @@ func (cm *CollectorManager) loadTotalEvents(containerId *ContainerId) (*TotalEve
 
 	syscallEvents, err := cm.tracer.PeekSyscallInContainer(containerId.NsMntId)
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "no syscall found") {
+			syscallEvents = []string{}
+		} else {
+			return nil, err
+		}
 	}
 
 	capabilitiesEvents, err := cm.eventSink.GetCapabilitiesEvents(containerId.Namespace, containerId.PodName, containerId.Container)
