@@ -39,12 +39,21 @@ type ContainerActivityEvent struct {
 	Pid         uint32
 }
 
+type ProcessDetails struct {
+	Pid  uint32
+	Ppid uint32
+	Comm string
+	Cwd  string
+	Uid  uint32
+	Gid  uint32
+}
+
 type GeneralEvent struct {
+	ProcessDetails
 	ContainerName string
 	ContainerID   string
 	PodName       string
 	Namespace     string
-	Pid           uint32
 	MountNsID     uint64
 	Timestamp     int64
 	EventType     EventType
