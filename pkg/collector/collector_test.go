@@ -125,11 +125,13 @@ func TestCollectorBasic(t *testing.T) {
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
+			ProcessDetails: tracing.ProcessDetails{
+				Pid: 0,
+			},
 			ContainerID:   containedID.ContainerID,
 			PodName:       containedID.PodName,
 			Namespace:     containedID.Namespace,
 			ContainerName: containedID.Container,
-			Pid:           containedID.Pid,
 			MountNsID:     containedID.NsMntId,
 			Timestamp:     0,
 		},
@@ -251,11 +253,13 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 	// Send execve event
 	eventSink.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
+			ProcessDetails: tracing.ProcessDetails{
+				Pid: 0,
+			},
 			ContainerID:   containedID.Container,
 			ContainerName: containedID.Container,
 			PodName:       containedID.PodName,
 			Namespace:     containedID.Namespace,
-			Pid:           containedID.Pid,
 			MountNsID:     containedID.NsMntId,
 			Timestamp:     0,
 		},

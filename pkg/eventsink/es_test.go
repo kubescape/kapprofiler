@@ -25,11 +25,13 @@ func TestNewEventSink(t *testing.T) {
 	// Exercise
 	es.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
+			ProcessDetails: tracing.ProcessDetails{
+				Pid: 1,
+			},
 			ContainerID:   "test",
 			ContainerName: "test",
 			PodName:       "test",
 			Namespace:     "test",
-			Pid:           1,
 			MountNsID:     1,
 			Timestamp:     0,
 		},
@@ -108,11 +110,14 @@ func TestEventSinkWithFilter(t *testing.T) {
 	// Exercise
 	es.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
+			ProcessDetails: tracing.ProcessDetails{
+				Pid: 1,
+			},
+
 			ContainerID:   "test",
 			ContainerName: "test",
 			PodName:       "test",
 			Namespace:     "test",
-			Pid:           1,
 			MountNsID:     1,
 			Timestamp:     0,
 		},
@@ -147,11 +152,14 @@ func TestEventSinkWithFilter(t *testing.T) {
 	// Send another event
 	es.SendExecveEvent(&tracing.ExecveEvent{
 		GeneralEvent: tracing.GeneralEvent{
+			ProcessDetails: tracing.ProcessDetails{
+				Pid: 1,
+			},
+
 			ContainerID:   "test",
 			ContainerName: "test",
 			PodName:       "test",
 			Namespace:     "test",
-			Pid:           1,
 			MountNsID:     1,
 			Timestamp:     0,
 		},

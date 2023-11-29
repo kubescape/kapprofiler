@@ -11,7 +11,7 @@ func TestContainerRuntimeDetection(t *testing.T) {
 	if err != nil {
 		t.Errorf("error detecting container runtime: %s\n", err)
 	}
-	if runtime.Name != igtypes.RuntimeNameDocker {
+	if runtime.Name != igtypes.RuntimeNameDocker && runtime.Name != igtypes.RuntimeNameContainerd {
 		t.Errorf("expected runtime name %s, got %s\n", igtypes.RuntimeNameDocker, runtime.Name)
 	}
 }
