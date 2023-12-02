@@ -244,11 +244,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Add execve events to container profile
 		for _, event := range totalEvents.ExecEvents {
-			containerProfile.Execs = append(containerProfile.Execs, ExecCalls{
-				Path: event.PathName,
-				Args: event.Args,
-				Envs: event.Env,
-			})
+			// Check if execve event is already in container profile or if it has no path name (Some execve events do not have a path name).
+			if !execEventExists(event, containerProfile.Execs) || event.PathName == "" {
+				containerProfile.Execs = append(containerProfile.Execs, ExecCalls{
+					Path: event.PathName,
+					Args: event.Args,
+					Envs: event.Env,
+				})
+			}
 		}
 
 		// Add dns events to container profile
@@ -506,6 +509,16 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 			Pid:         event.Pid,
 		}, true)
 	}
+}
+
+func execEventExists(execEvent *tracing.ExecveEvent, execCalls []ExecCalls) bool {
+	for _, call := range execCalls {
+		if execEvent.PathName == call.Path && slices.Equal(execEvent.Args, call.Args) && slices.Equal(execEvent.Env, call.Envs) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func networkEventExists(networkEvent *tracing.NetworkEvent, networkCalls []NetworkCalls) bool {
