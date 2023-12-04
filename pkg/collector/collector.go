@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kubescape/kapprofiler/pkg/eventsink"
@@ -57,6 +58,15 @@ type CollectorManager struct {
 
 	// config
 	config CollectorManagerConfig
+
+	// Pod finalizer watcher
+	podFinalizerControl chan struct{}
+
+	// Pod finalizer state table
+	podFinalizerState map[string]*PodProfileFinalizerState
+
+	// Mutex for pod finalizer state table
+	podFinalizerStateMutex *sync.Mutex
 }
 
 type CollectorManagerConfig struct {
@@ -72,6 +82,8 @@ type CollectorManagerConfig struct {
 	Tracer tracing.ITracer
 	// Record strategy
 	RecordStrategy string
+	// Node name
+	NodeName string
 }
 
 type TotalEvents struct {
@@ -84,6 +96,12 @@ type TotalEvents struct {
 }
 
 func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+	if config.NodeName == "" {
+		return nil, fmt.Errorf("node name cannot be empty")
+	}
 	// Get Kubernetes client
 	client, err := kubernetes.NewForConfig(config.K8sConfig)
 	if err != nil {
@@ -105,12 +123,18 @@ func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, e
 	// Setup container events listener
 	cm.tracer.AddContainerActivityListener(cm)
 
+	// Start finalizer watcher
+	cm.StartFinalizerWatcher()
+
 	return cm, nil
 }
 
 func (cm *CollectorManager) StopCollectorManager() error {
 	// Stop container events listener
 	cm.tracer.RemoveContainerActivityListener(cm)
+
+	// Stop finalizer watcher
+	cm.StopFinalizerWatcher()
 
 	return nil
 }
@@ -150,8 +174,7 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 	startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
 
 	if cm.config.FinalizeTime > 0 && cm.config.FinalizeTime > cm.config.Interval {
-		// Add a timer for finalizing the application profile
-		startContainerTimer(id, cm.config.FinalizeTime, cm.FinalizeApplicationProfile)
+		cm.MarkPodRecording(id.PodName, id.Namespace, attach)
 	}
 }
 
@@ -160,6 +183,9 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 	if _, ok := cm.containers[*id]; ok {
 		// Turn running state to false
 		cm.containers[*id].running = false
+
+		// Mark stop recording
+		cm.MarkPodNotRecording(id.PodName, id.Namespace)
 
 		// Stop tracing container
 		cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
