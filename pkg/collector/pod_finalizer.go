@@ -38,7 +38,6 @@ func (cm *CollectorManager) StartFinalizerWatcher() {
 	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(cm.dynamicClient, 0, metav1.NamespaceAll, func(lo *metav1.ListOptions) {
 		lo.FieldSelector = "spec.nodeName=" + cm.config.NodeName
 	})
-	//factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(cm.dynamicClient, 0, metav1.NamespaceAll, nil)
 	// Informer for Pods
 	informer := factory.ForResource(schema.GroupVersionResource{
 		Group:    "",
@@ -155,7 +154,6 @@ func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
 		// Check if pod is in map
 		podState, ok := cm.podFinalizerState[generateTableKey(newPod)]
 		if !ok {
-			// Pod not in map (WTF?)
 			log.Printf("Pod %s in namespace %s not in finalizer map", newPod.GetName(), newPod.GetNamespace())
 			return
 		}
@@ -226,7 +224,6 @@ func (cm *CollectorManager) stopTimer(pod *metav1.ObjectMeta) {
 	// Check if pod is in map
 	podState, ok := cm.podFinalizerState[generateTableKey(pod)]
 	if !ok {
-		// Pod not in map (WTF?)
 		log.Printf("Pod %s in namespace %s not in finalizer map", pod.GetName(), pod.GetNamespace())
 		return
 	}
