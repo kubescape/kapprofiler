@@ -105,6 +105,7 @@ func main() {
 		FinalizeTime:   0,  // 0 seconds to disable finalization
 		K8sConfig:      k8sConfig,
 		RecordStrategy: collector.RecordStrategyOnlyIfNotExists,
+		NodeName:       NodeName,
 	}
 	cm, err := collector.StartCollectorManager(collectorManagerConfig)
 	if err != nil {
