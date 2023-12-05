@@ -10,8 +10,8 @@ import (
 	igtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 )
 
-// IsUnixSocket checks if the given path is a Unix socket.
-func IsUnixSocket(path string) (bool, error) {
+// isUnixSocket checks if the given path is a Unix socket.
+func isUnixSocket(path string) (bool, error) {
 	fileInfo, err := os.Stat(path)
 	if err != nil {
 		return false, err // Could not obtain the file stats
@@ -36,7 +36,7 @@ func DetectContainerRuntime(hostMount string) (*containerutilsTypes.RuntimeConfi
 	for runtimeName, socketPath := range runtimes {
 		// Check if the socket is available on the host mount
 		socketPath = hostMount + socketPath
-		if isSocket, err := IsUnixSocket(socketPath); err == nil && isSocket {
+		if isSocket, err := isUnixSocket(socketPath); err == nil && isSocket {
 			return &containerutilsTypes.RuntimeConfig{
 				Name:       runtimeName,
 				SocketPath: socketPath,
