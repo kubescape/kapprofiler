@@ -46,6 +46,9 @@ type CollectorManager struct {
 	// Map of container ID to container state
 	containers map[ContainerId]*ContainerState
 
+	// Map mutex
+	containersMutex *sync.Mutex
+
 	// Kubernetes connection clien
 	k8sClient     *kubernetes.Clientset
 	dynamicClient *dynamic.DynamicClient
@@ -112,12 +115,13 @@ func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, e
 		return nil, err
 	}
 	cm := &CollectorManager{
-		containers:    make(map[ContainerId]*ContainerState),
-		k8sClient:     client,
-		dynamicClient: dynamicClient,
-		config:        *config,
-		eventSink:     config.EventSink,
-		tracer:        config.Tracer,
+		containers:      make(map[ContainerId]*ContainerState),
+		containersMutex: &sync.Mutex{},
+		k8sClient:       client,
+		dynamicClient:   dynamicClient,
+		config:          *config,
+		eventSink:       config.EventSink,
+		tracer:          config.Tracer,
 	}
 
 	// Setup container events listener
@@ -153,16 +157,12 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 	}
 
 	// Add container to map with running state set to true
+	cm.containersMutex.Lock()
 	cm.containers[*id] = &ContainerState{
 		running:  true,
 		attached: attach,
 	}
-
-	// Start event sink filter for container
-	cm.eventSink.AddFilter(&eventsink.EventSinkFilter{
-		ContainerID: id.ContainerID,
-		EventType:   tracing.AllEventType,
-	})
+	cm.containersMutex.Unlock()
 
 	// Get all events for this container
 	err = cm.tracer.StartTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
@@ -180,6 +180,8 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 
 func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 	// Check if container is still running (is it in the map?)
+	cm.containersMutex.Lock()
+	defer cm.containersMutex.Unlock()
 	if _, ok := cm.containers[*id]; ok {
 		// Turn running state to false
 		cm.containers[*id].running = false
@@ -190,8 +192,8 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 		// Stop tracing container
 		cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
 
-		// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
-		cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
+		// Remove container from map
+		delete(cm.containers, *id)
 	}
 
 	// Collect data from container events
@@ -199,49 +201,55 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 }
 
 func (cm *CollectorManager) loadTotalEvents(containerId *ContainerId) (*TotalEvents, error) {
+	allEvents := TotalEvents{}
 	// Get all events for this container
 	execEvents, err := cm.eventSink.GetExecveEvents(containerId.Namespace, containerId.PodName, containerId.Container)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		allEvents.ExecEvents = execEvents
+	} else {
+		log.Printf("error getting execve events: %s\n", err)
 	}
 
 	openEvents, err := cm.eventSink.GetOpenEvents(containerId.Namespace, containerId.PodName, containerId.Container)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		allEvents.OpenEvents = openEvents
+	} else {
+		log.Printf("error getting open events: %s\n", err)
 	}
 
 	syscallEvents, err := cm.tracer.PeekSyscallInContainer(containerId.NsMntId)
 	if err != nil {
 		if strings.Contains(err.Error(), "no syscall found") {
-			syscallEvents = []string{}
+			allEvents.SyscallEvents = []string{}
 		} else {
-			return nil, err
+			log.Printf("error getting syscall events: %s\n", err)
 		}
+	} else {
+		allEvents.SyscallEvents = syscallEvents
 	}
 
 	capabilitiesEvents, err := cm.eventSink.GetCapabilitiesEvents(containerId.Namespace, containerId.PodName, containerId.Container)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		allEvents.CapabilitiesEvents = capabilitiesEvents
+	} else {
+		log.Printf("error getting capabilities events: %s\n", err)
 	}
 
 	dnsEvents, err := cm.eventSink.GetDnsEvents(containerId.Namespace, containerId.PodName, containerId.Container)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		allEvents.DnsEvents = dnsEvents
+	} else {
+		log.Printf("error getting dns events: %s\n", err)
 	}
 
 	networkEvents, err := cm.eventSink.GetNetworkEvents(containerId.Namespace, containerId.PodName, containerId.Container)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		allEvents.NetworkEvents = networkEvents
+	} else {
+		log.Printf("error getting network events: %s\n", err)
 	}
 
-	return &TotalEvents{
-		ExecEvents:         execEvents,
-		OpenEvents:         openEvents,
-		SyscallEvents:      syscallEvents,
-		CapabilitiesEvents: capabilitiesEvents,
-		DnsEvents:          dnsEvents,
-		NetworkEvents:      networkEvents,
-	}, nil
+	return &allEvents, nil
 }
 
 func shouldProcessEvents(totalEvents *TotalEvents) bool {
@@ -250,7 +258,9 @@ func shouldProcessEvents(totalEvents *TotalEvents) bool {
 
 func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 	// Check if container is still running (is it in the map?)
-	if _, ok := cm.containers[*id]; ok {
+	cm.containersMutex.Lock()
+	if containerState, ok := cm.containers[*id]; ok {
+		cm.containersMutex.Unlock()
 		// Collect data from container events
 		totalEvents, err := cm.loadTotalEvents(id)
 		if err != nil {
@@ -371,7 +381,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 					Containers: []ContainerProfile{containerProfile},
 				},
 			}
-			if cm.containers[*id].attached {
+			if containerState.attached {
 				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
 			}
 			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
@@ -390,16 +400,24 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		} else {
 			// if the application profile is final (immutable), we cannot patch it
 			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
-				// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
-				// This is an optimization to avoid collecting events for containers that are already finalized
-				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
+				// Stop tracing container
+				cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
+
+				// Mark stop recording
+				cm.MarkPodNotRecording(id.PodName, id.Namespace)
+
+				// Remove the container from the map
+				cm.containersMutex.Lock()
+				delete(cm.containers, *id)
+				cm.containersMutex.Unlock()
+
 				return
 			}
 
 			appProfile := &ApplicationProfile{}
 
 			// If not attached (seen the container from the start) and partial annotation is set, remove it
-			if !cm.containers[*id].attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+			if !containerState.attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
 				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
 			}
 
@@ -422,12 +440,16 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Restart timer
 		startContainerTimer(id, cm.config.Interval, cm.CollectContainerEvents)
+	} else {
+		cm.containersMutex.Unlock()
 	}
 }
 
 func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
 	// Check if container is still running (is it in the map?)
+	cm.containersMutex.Lock()
 	if _, ok := cm.containers[*id]; ok {
+		cm.containersMutex.Unlock()
 		// Patch the application profile to make it immutable with the final annotation
 		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
 		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
@@ -435,6 +457,8 @@ func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
 		if err != nil {
 			log.Printf("error patching application profile: %s\n", err)
 		}
+	} else {
+		cm.containersMutex.Unlock()
 	}
 }
 
