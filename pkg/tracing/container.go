@@ -3,11 +3,28 @@ package tracing
 import (
 	"fmt"
 	"os"
+	"syscall"
 
 	runtimeclient "github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils/runtime-client"
 	containerutilsTypes "github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils/types"
 	igtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 )
+
+// isUnixSocket checks if the given path is a Unix socket.
+func isUnixSocket(path string) (bool, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false, err // Could not obtain the file stats
+	}
+
+	stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false, fmt.Errorf("not a unix file")
+	}
+
+	// Check if the file is a socket
+	return (stat.Mode & syscall.S_IFMT) == syscall.S_IFSOCK, nil
+}
 
 func DetectContainerRuntime(hostMount string) (*containerutilsTypes.RuntimeConfig, error) {
 	runtimes := map[igtypes.RuntimeName]string{
@@ -19,7 +36,7 @@ func DetectContainerRuntime(hostMount string) (*containerutilsTypes.RuntimeConfi
 	for runtimeName, socketPath := range runtimes {
 		// Check if the socket is available on the host mount
 		socketPath = hostMount + socketPath
-		if _, err := os.Stat(socketPath); err == nil {
+		if isSocket, err := isUnixSocket(socketPath); err == nil && isSocket {
 			return &containerutilsTypes.RuntimeConfig{
 				Name:       runtimeName,
 				SocketPath: socketPath,
