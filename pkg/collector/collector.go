@@ -162,6 +162,12 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 		running:  true,
 		attached: attach,
 	}
+
+	// Start event sink filter for container
+	cm.eventSink.AddFilter(&eventsink.EventSinkFilter{
+		ContainerID: id.ContainerID,
+		EventType:   tracing.AllEventType,
+	})
 	cm.containersMutex.Unlock()
 
 	// Get all events for this container
@@ -192,6 +198,8 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 		// Stop tracing container
 		cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
 
+		// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
+		cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 		// Remove container from map
 		delete(cm.containers, *id)
 	}
@@ -400,6 +408,8 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		} else {
 			// if the application profile is final (immutable), we cannot patch it
 			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+				// Remove the this container from the filters of the event sink so that it does not collect events for it anymore
+				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 				// Stop tracing container
 				cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
 
