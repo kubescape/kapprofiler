@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"reflect"
 	"strings"
 
 	"github.com/kubescape/kapprofiler/pkg/collector"
@@ -64,6 +65,12 @@ func (c *Controller) StartController() {
 			c.handleApplicationProfile(obj)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) { // Called when an ApplicationProfile is updated
+			old, _ := c.getApplicationProfileFromObj(oldObj)
+			new, _ := c.getApplicationProfileFromObj(newObj)
+			if reflect.DeepEqual(old.Spec, new.Spec) {
+				return
+			}
+
 			c.handleApplicationProfile(newObj)
 		},
 		DeleteFunc: func(obj interface{}) { // Called when an ApplicationProfile is deleted
