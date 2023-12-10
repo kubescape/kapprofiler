@@ -35,69 +35,69 @@ type ContainerActivityEvent struct {
 }
 
 type ProcessDetails struct {
-	Pid  uint32
-	Ppid uint32
-	Comm string
-	Cwd  string
-	Uid  uint32
-	Gid  uint32
+	Pid  uint32 `json:"pid"`
+	Ppid uint32 `json:"ppid"`
+	Comm string `json:"comm"`
+	Cwd  string `json:"cwd"`
+	Uid  uint32 `json:"uid"`
+	Gid  uint32 `json:"gid"`
 }
 
 type GeneralEvent struct {
 	ProcessDetails
-	ContainerName string
-	ContainerID   string
-	PodName       string
-	Namespace     string
-	MountNsID     uint64
-	Timestamp     int64
-	EventType     EventType
+	ContainerName string    `json:"container_name"`
+	ContainerID   string    `json:"container_id"`
+	PodName       string    `json:"pod_name"`
+	Namespace     string    `json:"namespace"`
+	MountNsID     uint64    `json:"mount_ns_id"`
+	Timestamp     int64     `json:"timestamp"`
+	EventType     EventType `json:"event_type"`
 }
 
 type ExecveEvent struct {
 	GeneralEvent
 
-	PathName string
-	Args     []string
-	Env      []string
+	PathName string   `json:"path_name"`
+	Args     []string `json:"args"`
+	Env      []string `json:"env"`
 }
 
 type OpenEvent struct {
 	GeneralEvent
 
-	TaskName string
-	TaskId   uint32
-	PathName string
-	Flags    []string
+	TaskName string   `json:"task_name"`
+	TaskId   uint32   `json:"task_id"`
+	PathName string   `json:"path_name"`
+	Flags    []string `json:"flags"`
 }
 
 type CapabilitiesEvent struct {
 	GeneralEvent
 
-	Syscall        string
-	CapabilityName string
+	Syscall        string `json:"syscall"`
+	CapabilityName string `json:"capability_name"`
 }
 
 type DnsEvent struct {
 	GeneralEvent
 
-	DnsName   string
-	Addresses []string
+	DnsName   string   `json:"dns_name"`
+	Addresses []string `json:"addresses"`
 }
 
 type NetworkEvent struct {
 	GeneralEvent
 
-	PacketType  string
-	Protocol    string
-	Port        uint16
-	DstEndpoint string
+	PacketType  string `json:"packet_type"`
+	Protocol    string `json:"protocol"`
+	Port        uint16 `json:"port"`
+	DstEndpoint string `json:"dst_endpoint"`
 }
 
 type SyscallEvent struct {
 	GeneralEvent
 
-	Syscalls []string
+	Syscalls []string `json:"syscalls"`
 }
 
 type EventSink interface {
