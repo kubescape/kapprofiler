@@ -94,13 +94,13 @@ func (t *Tracer) startNetworkTracing() error {
 	tracerNetwork.SetEventHandler(t.networkEventCallback)
 
 	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
 	t.tracingState[NetworkEventType] = TracingState{
 		usageReferenceCount:    make(map[uint64]int),
 		eBpfContainerFilterMap: nil,
 		gadget:                 nil,
 		attachable:             tracerNetwork,
 	}
-	t.tracingStateMutex.Unlock()
 
 	return nil
 }
@@ -120,13 +120,13 @@ func (t *Tracer) startCapabilitiesTracing() error {
 	}
 
 	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
 	t.tracingState[CapabilitiesEventType] = TracingState{
 		usageReferenceCount:    make(map[uint64]int),
 		eBpfContainerFilterMap: capabilitiesMountnsmap,
 		gadget:                 tracerCapabilities,
 		attachable:             nil,
 	}
-	t.tracingStateMutex.Unlock()
 
 	return nil
 }
@@ -142,13 +142,13 @@ func (t *Tracer) startDnsTracing() error {
 	tracerDns.SetEventHandler(t.dnsEventCallback)
 
 	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
 	t.tracingState[DnsEventType] = TracingState{
 		usageReferenceCount:    make(map[uint64]int),
 		eBpfContainerFilterMap: nil,
 		gadget:                 nil,
 		attachable:             tracerDns,
 	}
-	t.tracingStateMutex.Unlock()
 
 	return nil
 }
@@ -168,13 +168,13 @@ func (t *Tracer) startOpenTracing() error {
 	}
 
 	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
 	t.tracingState[OpenEventType] = TracingState{
 		usageReferenceCount:    make(map[uint64]int),
 		eBpfContainerFilterMap: openMountnsmap,
 		gadget:                 tracerOpen,
 		attachable:             nil,
 	}
-	t.tracingStateMutex.Unlock()
 
 	return nil
 }
@@ -339,13 +339,13 @@ func (t *Tracer) startExecTracing() error {
 	}
 
 	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
 	t.tracingState[ExecveEventType] = TracingState{
 		usageReferenceCount:    make(map[uint64]int),
 		eBpfContainerFilterMap: execMountnsmap,
 		gadget:                 tracerExec,
 		attachable:             nil,
 	}
-	t.tracingStateMutex.Unlock()
 
 	return nil
 }
@@ -359,6 +359,7 @@ func (t *Tracer) startSystemcallTracing() error {
 	}
 
 	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
 	t.tracingState[SyscallEventType] = TracingState{
 		usageReferenceCount:    nil,
 		eBpfContainerFilterMap: nil,
@@ -366,7 +367,6 @@ func (t *Tracer) startSystemcallTracing() error {
 		attachable:             nil,
 		peekable:               syscallTracer,
 	}
-	t.tracingStateMutex.Unlock()
 	return nil
 }
 
