@@ -24,8 +24,6 @@ import (
 const execTraceName = "trace_exec"
 const openTraceName = "trace_open"
 const capabilitiesTraceName = "trace_capabilities"
-const dnsTraceName = "trace_dns"
-const networkTraceName = "trace_network"
 
 func createEbpfMountNsMap(tracerId string) (*ebpf.Map, error) {
 	mntnsSpec := &ebpf.MapSpec{
@@ -328,6 +326,10 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 func (t *Tracer) startExecTracing() error {
 	// Create nsmount map to filter by containers
 	execMountnsmap, err := createEbpfMountNsMap(execTraceName)
+	if err != nil {
+		log.Printf("error creating mountnsmap: %s\n", err)
+		return err
+	}
 
 	// Create the exec tracer
 	tracerExec, err := tracerexec.NewTracer(&tracerexec.Config{MountnsMap: execMountnsmap}, t.cCollection, t.execEventCallback)
