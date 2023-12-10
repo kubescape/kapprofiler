@@ -98,9 +98,8 @@ func (c *Controller) handleApplicationProfile(obj interface{}) {
 		return
 	}
 
-	// Get Object name from ApplicationProfile. Application profile name has the kind in as the the prefix like deployment-nginx
+	// Get Object name from ApplicationProfile. Application profile name has the kind in as the prefix like deployment-nginx
 	objectName := strings.Join(strings.Split(applicationProfile.ObjectMeta.Name, "-")[1:], "-")
-	//kind := strings.Split(applicationProfile.ObjectMeta.Name, "-")[0]
 
 	// Get pod to which the ApplicationProfile belongs to
 	pod, err := c.staticClient.CoreV1().Pods(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), objectName, metav1.GetOptions{})

@@ -431,6 +431,18 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
 			}
 
+			// Convert the unstructured object to typed struct.
+			existingAppProfileRaw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(existingApplicationProfile)
+			if err != nil {
+				log.Printf("error converting application profile: %s\n", err)
+			}
+
+			// Convert the unstructured object to typed struct - update the application profile with existing data.
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(existingAppProfileRaw, appProfile)
+			if err != nil {
+				log.Printf("error converting application profile: %s\n", err)
+			}
+
 			// Add container profile to the list of containers
 			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
 
@@ -517,6 +529,10 @@ func (cm *CollectorManager) doesApplicationProfileExists(namespace string, podNa
 	existingApplicationProfile, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
 	if err != nil {
 		return false, err
+	}
+
+	if existingApplicationProfile == nil {
+		return false, nil
 	}
 
 	// if the application profile is final (immutable), we cannot patch it
