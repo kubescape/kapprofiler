@@ -2,7 +2,6 @@ package collector
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -25,6 +24,8 @@ import (
 const (
 	RecordStrategyAlways          = "always"
 	RecordStrategyOnlyIfNotExists = "only-if-not-exists"
+	MaxOpenEvents                 = 10000 // Per container profile.
+	MaxNetworkEvents              = 10000 // Per container profile.
 )
 
 type ContainerId struct {
@@ -333,7 +334,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		for _, event := range totalEvents.OpenEvents {
 			hasSameFile, hasSameFlags := openEventExists(event, containerProfile.Opens)
 			// TODO: check if event is already in containerProfile.Opens & remove the 10000 limit.
-			if len(containerProfile.Opens) < 10000 && !(hasSameFile && hasSameFlags) {
+			if len(containerProfile.Opens) < MaxOpenEvents && !(hasSameFile && hasSameFlags) {
 				openEvent := OpenCalls{
 					Path:  event.PathName,
 					Flags: event.Flags,
@@ -424,14 +425,6 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				return
 			}
 
-			appProfile := &ApplicationProfile{}
-
-			// If not attached (seen the container from the start) and partial annotation is set, remove it
-			if !containerState.attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
-				log.Printf("Removing partial annotation from application profile %s\n", appProfileName)
-				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
-			}
-
 			// Add the container profile into the application profile. If the container profile already exists, it will be merged.
 			existingApplicationProfileObject := &ApplicationProfile{}
 			err = runtime.DefaultUnstructuredConverter.FromUnstructured(existingApplicationProfile.Object, existingApplicationProfileObject)
@@ -439,19 +432,25 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				log.Printf("error unmarshalling application profile: %s\n", err)
 			}
 
-			appProfile = cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile)
+			// If not attached (seen the container from the start) and partial annotation is set, remove it
+			if !containerState.attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+				log.Printf("Removing partial annotation from application profile %s\n", appProfileName)
+				existingApplicationProfileObject.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
+			}
 
-			// Convert the typed struct to json string.
-			appProfileRawNew, err := json.Marshal(appProfile)
+			mergedAppProfile := cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile)
+			unstructuredAppProfile, err := runtime.DefaultUnstructuredConverter.ToUnstructured(mergedAppProfile)
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
-			} else {
-				// Print the json string.
-				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
-					appProfileName, apitypes.MergePatchType, appProfileRawNew, v1.PatchOptions{})
-				if err != nil {
-					log.Printf("error patching application profile: %s\n", err)
-				}
+			}
+			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Update(
+				context.Background(),
+				&unstructured.Unstructured{
+					Object: unstructuredAppProfile,
+				},
+				v1.UpdateOptions{})
+			if err != nil {
+				log.Printf("error updating application profile: %s\n", err)
 			}
 		}
 
@@ -521,7 +520,7 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 			filteredOpens := []OpenCalls{}
 			for _, open := range containerProfile.Opens {
 				hasSameFile, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens)
-				if len(existingContainer.Opens) < 10000 && !(hasSameFile && hasSameFlags) {
+				if len(existingContainer.Opens) < MaxOpenEvents && !(hasSameFile && hasSameFlags) {
 					filteredOpens = append(filteredOpens, open)
 				}
 			}
@@ -529,12 +528,12 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 
 			// Merge network activity
 			for _, networkEvent := range containerProfile.NetworkActivity.Incoming {
-				if !networkEventExists(&tracing.NetworkEvent{DstEndpoint: networkEvent.DstEndpoint, Port: networkEvent.Port, Protocol: networkEvent.Protocol}, existingContainer.NetworkActivity.Incoming) {
+				if len(existingContainer.NetworkActivity.Incoming) < MaxNetworkEvents && !networkEventExists(&tracing.NetworkEvent{DstEndpoint: networkEvent.DstEndpoint, Port: networkEvent.Port, Protocol: networkEvent.Protocol}, existingContainer.NetworkActivity.Incoming) {
 					existingContainer.NetworkActivity.Incoming = append(existingContainer.NetworkActivity.Incoming, networkEvent)
 				}
 			}
 			for _, networkEvent := range containerProfile.NetworkActivity.Outgoing {
-				if !networkEventExists(&tracing.NetworkEvent{DstEndpoint: networkEvent.DstEndpoint, Port: networkEvent.Port, Protocol: networkEvent.Protocol}, existingContainer.NetworkActivity.Outgoing) {
+				if len(existingContainer.NetworkActivity.Outgoing) < MaxNetworkEvents && !networkEventExists(&tracing.NetworkEvent{DstEndpoint: networkEvent.DstEndpoint, Port: networkEvent.Port, Protocol: networkEvent.Protocol}, existingContainer.NetworkActivity.Outgoing) {
 					existingContainer.NetworkActivity.Outgoing = append(existingContainer.NetworkActivity.Outgoing, networkEvent)
 				}
 			}
