@@ -428,11 +428,18 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 			// If not attached (seen the container from the start) and partial annotation is set, remove it
 			if !containerState.attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+				log.Printf("Removing partial annotation from application profile %s\n", appProfileName)
 				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
 			}
 
-			// Add container profile to the list of containers
-			appProfile.Spec.Containers = append(appProfile.Spec.Containers, containerProfile)
+			// Add the container profile into the application profile. If the container profile already exists, it will be merged.
+			existingApplicationProfileObject := &ApplicationProfile{}
+			err = runtime.DefaultUnstructuredConverter.FromUnstructured(existingApplicationProfile.Object, existingApplicationProfileObject)
+			if err != nil {
+				log.Printf("error unmarshalling application profile: %s\n", err)
+			}
+
+			appProfile = cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile)
 
 			// Convert the typed struct to json string.
 			appProfileRawNew, err := json.Marshal(appProfile)
@@ -453,6 +460,95 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 	} else {
 		cm.containersMutex.Unlock()
 	}
+}
+
+func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile *ApplicationProfile, containerProfile *ContainerProfile) *ApplicationProfile {
+	// Add container profile to the list of containers or merge it with the existing one.
+	for i, existingContainerProfile := range existingApplicationProfile.Spec.Containers {
+		if existingContainerProfile.Name == containerProfile.Name {
+			// Merge container profile
+			existingContainer := existingApplicationProfile.Spec.Containers[i]
+
+			// Merge syscalls
+			filteredSyscalls := []string{}
+			for _, syscall := range containerProfile.SysCalls {
+				if !slices.Contains(existingContainer.SysCalls, syscall) {
+					filteredSyscalls = append(filteredSyscalls, syscall)
+				}
+			}
+			existingContainer.SysCalls = append(existingContainer.SysCalls, filteredSyscalls...)
+
+			// Merge execve events
+			filteredExecs := []ExecCalls{}
+			for _, exec := range containerProfile.Execs {
+				if !execEventExists(&tracing.ExecveEvent{PathName: exec.Path, Args: exec.Args, Env: exec.Envs}, existingContainer.Execs) {
+					filteredExecs = append(filteredExecs, exec)
+				}
+			}
+			existingContainer.Execs = append(existingContainer.Execs, filteredExecs...)
+
+			// Merge dns events
+			filteredDns := []DnsCalls{}
+			for _, dns := range containerProfile.Dns {
+				if !dnsEventExists(&tracing.DnsEvent{DnsName: dns.DnsName, Addresses: dns.Addresses}, existingContainer.Dns) {
+					filteredDns = append(filteredDns, dns)
+				}
+			}
+			existingContainer.Dns = append(existingContainer.Dns, filteredDns...)
+
+			// Merge capabilities events
+			filteredCapabilities := []CapabilitiesCalls{}
+			for _, capability := range containerProfile.Capabilities {
+				syscallExists := false
+				for i, existingCapability := range existingContainer.Capabilities {
+					if existingCapability.Syscall == capability.Syscall {
+						syscallExists = true
+						for _, cap := range capability.Capabilities {
+							if !slices.Contains(existingCapability.Capabilities, cap) {
+								existingContainer.Capabilities[i].Capabilities = append(existingCapability.Capabilities, cap)
+							}
+						}
+						break
+					}
+				}
+				if !syscallExists {
+					filteredCapabilities = append(filteredCapabilities, capability)
+				}
+			}
+			existingContainer.Capabilities = append(existingContainer.Capabilities, filteredCapabilities...)
+
+			// Merge open events
+			filteredOpens := []OpenCalls{}
+			for _, open := range containerProfile.Opens {
+				hasSameFile, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens)
+				if len(existingContainer.Opens) < 10000 && !(hasSameFile && hasSameFlags) {
+					filteredOpens = append(filteredOpens, open)
+				}
+			}
+			existingContainer.Opens = append(existingContainer.Opens, filteredOpens...)
+
+			// Merge network activity
+			for _, networkEvent := range containerProfile.NetworkActivity.Incoming {
+				if !networkEventExists(&tracing.NetworkEvent{DstEndpoint: networkEvent.DstEndpoint, Port: networkEvent.Port, Protocol: networkEvent.Protocol}, existingContainer.NetworkActivity.Incoming) {
+					existingContainer.NetworkActivity.Incoming = append(existingContainer.NetworkActivity.Incoming, networkEvent)
+				}
+			}
+			for _, networkEvent := range containerProfile.NetworkActivity.Outgoing {
+				if !networkEventExists(&tracing.NetworkEvent{DstEndpoint: networkEvent.DstEndpoint, Port: networkEvent.Port, Protocol: networkEvent.Protocol}, existingContainer.NetworkActivity.Outgoing) {
+					existingContainer.NetworkActivity.Outgoing = append(existingContainer.NetworkActivity.Outgoing, networkEvent)
+				}
+			}
+
+			// Replace container profile
+			existingApplicationProfile.Spec.Containers[i] = existingContainer
+			return existingApplicationProfile
+		}
+	}
+
+	// Add container profile to the list of containers
+	existingApplicationProfile.Spec.Containers = append(existingApplicationProfile.Spec.Containers, *containerProfile)
+
+	return existingApplicationProfile
 }
 
 func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {

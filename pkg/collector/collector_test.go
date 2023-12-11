@@ -234,6 +234,7 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 		K8sConfig: k8sConfig,
 		EventSink: eventSink,
 		Tracer:    &TestTracer{},
+		NodeName:  "minikube",
 	})
 	if err != nil {
 		t.Fatalf("error starting collector manager: %s\n", err)
@@ -295,6 +296,11 @@ func TestCollectorWithContainerProfileUpdates(t *testing.T) {
 	appProfile, err = getContainerProfile(k8sConfig, containedID.Namespace, containedID.PodName)
 	if err != nil {
 		t.Fatalf("error getting container profile: %s\n", err)
+	}
+
+	// Verify length containers
+	if len(appProfile.Spec.Containers) != 1 {
+		t.Errorf("expected 1 container, got %d\n", len(appProfile.Spec.Containers))
 	}
 
 	// Stop container
