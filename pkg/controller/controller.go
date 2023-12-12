@@ -62,7 +62,12 @@ func (c *Controller) StartController() {
 	// Add event handlers to informer
 	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) { // Called when an ApplicationProfile is added
-			c.handleApplicationProfile(obj)
+			applicationProfile, err := c.getApplicationProfileFromObj(obj)
+			if err != nil {
+				return
+			}
+
+			c.handleApplicationProfile(applicationProfile)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) { // Called when an ApplicationProfile is updated
 			old, _ := c.getApplicationProfileFromObj(oldObj)
@@ -71,10 +76,14 @@ func (c *Controller) StartController() {
 				return
 			}
 
-			c.handleApplicationProfile(newObj)
+			c.handleApplicationProfile(new)
 		},
 		DeleteFunc: func(obj interface{}) { // Called when an ApplicationProfile is deleted
-			c.handleApplicationProfile(obj)
+			applicationProfile, err := c.getApplicationProfileFromObj(obj)
+			if err != nil {
+				return
+			}
+			c.handleApplicationProfile(applicationProfile)
 		},
 	})
 
@@ -87,12 +96,7 @@ func (c *Controller) StopController() {
 	close(c.controllerChannel)
 }
 
-func (c *Controller) handleApplicationProfile(obj interface{}) {
-	applicationProfile, err := c.getApplicationProfileFromObj(obj)
-	if err != nil {
-		return
-	}
-
+func (c *Controller) handleApplicationProfile(applicationProfile *collector.ApplicationProfile) {
 	// If the application profile is marked as partial, do not propagate it
 	if applicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
 		return
