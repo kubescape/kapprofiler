@@ -248,6 +248,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 			return
 		}
 
+		// TODO: Make this code more efficient and less repetitive.
 		for _, container := range podApplicationProfileObj.Spec.Containers {
 			// Merge containers
 			if mapContainer, exists := containersMap[container.Name]; exists {
@@ -269,6 +270,75 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 					}
 					if !contains {
 						mapContainer.Execs = append(mapContainer.Execs, exec)
+					}
+				}
+
+				// Merge Capabilities
+				for _, capability := range container.Capabilities {
+					contains := false
+					for _, mapCapability := range mapContainer.Capabilities {
+						if mapCapability.Equals(capability) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.Capabilities = append(mapContainer.Capabilities, capability)
+					}
+				}
+
+				// Merge Opens
+				for _, open := range container.Opens {
+					contains := false
+					for _, mapOpen := range mapContainer.Opens {
+						if mapOpen.Equals(open) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.Opens = append(mapContainer.Opens, open)
+					}
+				}
+
+				// Merge Dns
+				for _, dns := range container.Dns {
+					contains := false
+					for _, mapDns := range mapContainer.Dns {
+						if mapDns.Equals(dns) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.Dns = append(mapContainer.Dns, dns)
+					}
+				}
+
+				// Merge Network
+				for _, network := range container.NetworkActivity.Incoming {
+					contains := false
+					for _, mapNetwork := range mapContainer.NetworkActivity.Incoming {
+						if mapNetwork.Equals(network) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.NetworkActivity.Incoming = append(mapContainer.NetworkActivity.Incoming, network)
+					}
+				}
+
+				for _, network := range container.NetworkActivity.Outgoing {
+					contains := false
+					for _, mapNetwork := range mapContainer.NetworkActivity.Outgoing {
+						if mapNetwork.Equals(network) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.NetworkActivity.Outgoing = append(mapContainer.NetworkActivity.Outgoing, network)
 					}
 				}
 

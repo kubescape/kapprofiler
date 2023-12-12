@@ -92,3 +92,81 @@ func (a ExecCalls) Equals(b ExecCalls) bool {
 	// TODO: compare envs
 	return true
 }
+
+func (a OpenCalls) Equals(b OpenCalls) bool {
+	if a.Path != b.Path {
+		return false
+	}
+	if len(a.Flags) != len(b.Flags) {
+		return false
+	}
+	for i, flag := range a.Flags {
+		if flag != b.Flags[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (a CapabilitiesCalls) Equals(b CapabilitiesCalls) bool {
+	if a.Syscall != b.Syscall {
+		return false
+	}
+	if len(a.Capabilities) != len(b.Capabilities) {
+		return false
+	}
+	for i, cap := range a.Capabilities {
+		if cap != b.Capabilities[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (a DnsCalls) Equals(b DnsCalls) bool {
+	if a.DnsName != b.DnsName {
+		return false
+	}
+	if len(a.Addresses) != len(b.Addresses) {
+		return false
+	}
+	for i, addr := range a.Addresses {
+		if addr != b.Addresses[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (a NetworkCalls) Equals(b NetworkCalls) bool {
+	if a.Protocol != b.Protocol {
+		return false
+	}
+	if a.Port != b.Port {
+		return false
+	}
+	if a.DstEndpoint != b.DstEndpoint {
+		return false
+	}
+	return true
+}
+
+func (a NetworkActivity) Equals(b NetworkActivity) bool {
+	if len(a.Incoming) != len(b.Incoming) {
+		return false
+	}
+	for i, inc := range a.Incoming {
+		if !inc.Equals(b.Incoming[i]) {
+			return false
+		}
+	}
+	if len(a.Outgoing) != len(b.Outgoing) {
+		return false
+	}
+	for i, out := range a.Outgoing {
+		if !out.Equals(b.Outgoing[i]) {
+			return false
+		}
+	}
+	return true
+}
