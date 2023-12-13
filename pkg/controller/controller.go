@@ -98,7 +98,7 @@ func (c *Controller) StopController() {
 
 func (c *Controller) handleApplicationProfile(applicationProfile *collector.ApplicationProfile) {
 	// If the application profile is marked as partial, do not propagate it
-	if applicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+	if applicationProfile.GetLabels()["kapprofiler.kubescape.io/partial"] == "true" {
 		return
 	}
 
@@ -124,8 +124,8 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 						APIVersion: collector.ApplicationProfileApiVersion,
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:        profileName,
-						Annotations: applicationProfile.GetAnnotations(),
+						Name:   profileName,
+						Labels: applicationProfile.GetLabels(),
 					},
 					Spec: collector.ApplicationProfileSpec{
 						Containers: applicationProfile.Spec.Containers,
@@ -141,13 +141,13 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 				}
 			} else { // ApplicationProfile exists for deployment
 				// Check if the higher level application profile is marked as final (imutable)
-				if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+				if existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] == "true" {
 					// Don't update the application profile
 					return
 				}
 
 				deploymentApplicationProfile := &collector.ApplicationProfile{}
-				deploymentApplicationProfile.Annotations = applicationProfile.GetAnnotations()
+				deploymentApplicationProfile.Labels = applicationProfile.GetLabels()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
 				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
@@ -364,8 +364,8 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 				APIVersion: collector.ApplicationProfileApiVersion,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:        applicationProfileNameForController,
-				Annotations: applicationProfile.GetAnnotations(),
+				Name:   applicationProfileNameForController,
+				Labels: applicationProfile.GetLabels(),
 			},
 			Spec: collector.ApplicationProfileSpec{
 				Containers: containers,
@@ -383,12 +383,12 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 		}
 	} else { // ApplicationProfile of controller exists so update it
 		// Check if the higher level application profile is marked as final (imutable)
-		if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+		if existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] == "true" {
 			// Don't update the application profile
 			return
 		}
 		controllerApplicationProfile := &collector.ApplicationProfile{}
-		controllerApplicationProfile.Annotations = applicationProfile.GetAnnotations()
+		controllerApplicationProfile.Labels = applicationProfile.GetLabels()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
 		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})

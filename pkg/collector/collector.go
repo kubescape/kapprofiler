@@ -391,7 +391,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				},
 			}
 			if containerState.attached {
-				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
+				appProfile.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
 			}
 			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
 			if err != nil {
@@ -408,7 +408,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			}
 		} else {
 			// if the application profile is final (immutable), we cannot patch it
-			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+			if existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] == "true" {
 				// Remove this container from the filters of the event sink so that it does not collect events for it anymore
 				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 				// Stop tracing container
@@ -432,10 +432,10 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				log.Printf("error unmarshalling application profile: %s\n", err)
 			}
 
-			// If not attached (seen the container from the start) and partial annotation is set, remove it
-			if !containerState.attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
-				log.Printf("Removing partial annotation from application profile %s\n", appProfileName)
-				existingApplicationProfileObject.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
+			// If not attached (seen the container from the start) and partial label is set, remove it
+			if !containerState.attached && existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/partial"] == "true" {
+				log.Printf("Removing partial label from application profile %s\n", appProfileName)
+				existingApplicationProfileObject.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
 			}
 
 			mergedAppProfile := cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile)
@@ -555,10 +555,10 @@ func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
 	cm.containersMutex.Lock()
 	if _, ok := cm.containers[*id]; ok {
 		cm.containersMutex.Unlock()
-		// Patch the application profile to make it immutable with the final annotation
+		// Patch the application profile to make it immutable with the final label
 		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
 		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
-			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"annotations\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), v1.PatchOptions{})
+			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), v1.PatchOptions{})
 		if err != nil {
 			log.Printf("error patching application profile: %s\n", err)
 		}
@@ -615,7 +615,7 @@ func (cm *CollectorManager) doesApplicationProfileExists(namespace string, podNa
 	}
 
 	// if the application profile is final (immutable), we cannot patch it
-	if checkFinal && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] != "true" {
+	if checkFinal && existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] != "true" {
 		return false, nil
 	}
 
