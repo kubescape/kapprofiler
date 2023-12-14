@@ -182,7 +182,7 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 
 	// Fetch mounts for pod
 	cm.podMountCacheMutex.Lock()
-	if _, ok := cm.podMountCache[id.PodName]; !ok {
+	if _, ok := cm.podMountCache[fmt.Sprintf("%s-%s", id.PodName, id.Namespace)]; !ok {
 		mounts, err := cm.getPodMounts(id.PodName, id.Namespace)
 		if err != nil {
 			log.Printf("error getting pod mounts: %s\n", err)
