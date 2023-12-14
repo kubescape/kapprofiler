@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"reflect"
 	"strings"
 
 	"github.com/kubescape/kapprofiler/pkg/collector"
+	"github.com/kubescape/kapprofiler/pkg/watcher"
 
 	"golang.org/x/exp/slices"
 
@@ -20,19 +20,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	apitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 )
 
 // AppProfile controller struct
 type Controller struct {
-	config            *rest.Config
-	staticClient      *kubernetes.Clientset
-	dynamicClient     *dynamic.DynamicClient
-	appProfileGvr     schema.GroupVersionResource
-	controllerChannel chan struct{}
+	config        *rest.Config
+	staticClient  *kubernetes.Clientset
+	dynamicClient *dynamic.DynamicClient
+	appProfileGvr schema.GroupVersionResource
+	watcher       watcher.WatcherInterface
 }
 
 // Create a new controller based on given config
@@ -41,27 +39,24 @@ func NewController(config *rest.Config) *Controller {
 	// Initialize clients and channels
 	staticClient, _ := kubernetes.NewForConfig(config)
 	dynamicClient, _ := dynamic.NewForConfig(config)
-	controllerChannel := make(chan struct{})
 
 	return &Controller{
-		config:            config,
-		staticClient:      staticClient,
-		dynamicClient:     dynamicClient,
-		appProfileGvr:     collector.AppProfileGvr,
-		controllerChannel: controllerChannel,
+		config:        config,
+		staticClient:  staticClient,
+		dynamicClient: dynamicClient,
+		appProfileGvr: collector.AppProfileGvr,
 	}
 }
 
 // Responsible for instantiating AppProfile controller
 func (c *Controller) StartController() {
 
-	// Initialize factory and informer
-	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(c.dynamicClient, 0, metav1.NamespaceAll, nil)
-	informer := factory.ForResource(c.appProfileGvr).Informer()
+	// Initialize the watcher
+	appProfileWatcher := watcher.NewWatcher(c.dynamicClient)
 
-	// Add event handlers to informer
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) { // Called when an ApplicationProfile is added
+	// Start the watcher
+	err := appProfileWatcher.Start(watcher.WatchNotifyFunctions{
+		AddFunc: func(obj *unstructured.Unstructured) {
 			applicationProfile, err := c.getApplicationProfileFromObj(obj)
 			if err != nil {
 				return
@@ -69,31 +64,39 @@ func (c *Controller) StartController() {
 
 			c.handleApplicationProfile(applicationProfile)
 		},
-		UpdateFunc: func(oldObj, newObj interface{}) { // Called when an ApplicationProfile is updated
-			old, _ := c.getApplicationProfileFromObj(oldObj)
-			new, _ := c.getApplicationProfileFromObj(newObj)
-			if reflect.DeepEqual(old.Spec, new.Spec) {
-				return
-			}
-
-			c.handleApplicationProfile(new)
-		},
-		DeleteFunc: func(obj interface{}) { // Called when an ApplicationProfile is deleted
+		UpdateFunc: func(obj *unstructured.Unstructured) {
 			applicationProfile, err := c.getApplicationProfileFromObj(obj)
 			if err != nil {
 				return
 			}
+
 			c.handleApplicationProfile(applicationProfile)
 		},
-	})
+		DeleteFunc: func(obj *unstructured.Unstructured) {
+			applicationProfile, err := c.getApplicationProfileFromObj(obj)
+			if err != nil {
+				return
+			}
 
-	// Run the informer
-	go informer.Run(c.controllerChannel)
+			c.handleApplicationProfile(applicationProfile)
+		},
+	}, collector.AppProfileGvr, metav1.ListOptions{})
+
+	if err != nil {
+		log.Printf("Error starting watcher %v", err)
+		return
+	}
+
+	// Set the watcher
+	c.watcher = appProfileWatcher
+
 }
 
 // Stop the AppProfile controller
 func (c *Controller) StopController() {
-	close(c.controllerChannel)
+	if c.watcher != nil {
+		c.watcher.Stop()
+	}
 }
 
 func (c *Controller) handleApplicationProfile(applicationProfile *collector.ApplicationProfile) {
