@@ -71,6 +71,12 @@ type CollectorManager struct {
 
 	// Mutex for pod finalizer state table
 	podFinalizerStateMutex *sync.Mutex
+
+	// Pod mount cache
+	podMountCache map[string][]string
+
+	// Mutex for pod mount cache
+	podMountCacheMutex *sync.Mutex
 }
 
 type CollectorManagerConfig struct {
@@ -88,6 +94,10 @@ type CollectorManagerConfig struct {
 	RecordStrategy string
 	// Node name
 	NodeName string
+	// Should ignore mounts
+	IgnoreMounts bool
+	// Should ignore prefixes
+	IgnorePrefixes []string
 }
 
 type TotalEvents struct {
@@ -116,13 +126,15 @@ func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, e
 		return nil, err
 	}
 	cm := &CollectorManager{
-		containers:      make(map[ContainerId]*ContainerState),
-		containersMutex: &sync.Mutex{},
-		k8sClient:       client,
-		dynamicClient:   dynamicClient,
-		config:          *config,
-		eventSink:       config.EventSink,
-		tracer:          config.Tracer,
+		containers:         make(map[ContainerId]*ContainerState),
+		containersMutex:    &sync.Mutex{},
+		k8sClient:          client,
+		dynamicClient:      dynamicClient,
+		config:             *config,
+		eventSink:          config.EventSink,
+		tracer:             config.Tracer,
+		podMountCache:      make(map[string][]string),
+		podMountCacheMutex: &sync.Mutex{},
 	}
 
 	// Setup container events listener
@@ -171,6 +183,17 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 	})
 	cm.containersMutex.Unlock()
 
+	// Fetch mounts for pod
+	cm.podMountCacheMutex.Lock()
+	if _, ok := cm.podMountCache[fmt.Sprintf("%s-%s", id.PodName, id.Namespace)]; !ok {
+		mounts, err := cm.getPodMounts(id.PodName, id.Namespace)
+		if err != nil {
+			log.Printf("error getting pod mounts: %s\n", err)
+		}
+		cm.podMountCache[fmt.Sprintf("%s-%s", id.PodName, id.Namespace)] = mounts
+	}
+	cm.podMountCacheMutex.Unlock()
+
 	// Get all events for this container
 	err = cm.tracer.StartTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
 	if err != nil {
@@ -201,8 +224,24 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 
 		// Remove this container from the filters of the event sink so that it does not collect events for it anymore
 		cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
+
 		// Remove container from map
 		delete(cm.containers, *id)
+
+		// Remove pod mount cache if no containers are running in the pod.
+		podExists := false
+		for containerId := range cm.containers {
+			if containerId.PodName == id.PodName && containerId.Namespace == id.Namespace {
+				podExists = true
+				break
+			}
+		}
+
+		if !podExists {
+			cm.podMountCacheMutex.Lock()
+			delete(cm.podMountCache, fmt.Sprintf("%s-%s", id.PodName, id.Namespace))
+			cm.podMountCacheMutex.Unlock()
+		}
 	}
 
 	// Collect data from container events
@@ -331,10 +370,11 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// Add open events to container profile
+		cm.podMountCacheMutex.Lock()
+		mounts := cm.podMountCache[fmt.Sprintf("%s-%s", id.PodName, id.Namespace)]
+		cm.podMountCacheMutex.Unlock()
 		for _, event := range totalEvents.OpenEvents {
-			hasSameFile, hasSameFlags := openEventExists(event, containerProfile.Opens)
-			// TODO: check if event is already in containerProfile.Opens & remove the 10000 limit.
-			if len(containerProfile.Opens) < MaxOpenEvents && !(hasSameFile && hasSameFlags) {
+			if cm.shouldIncludeOpenEvent(event, containerProfile.Opens, mounts) {
 				openEvent := OpenCalls{
 					Path:  event.PathName,
 					Flags: event.Flags,
@@ -391,7 +431,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				},
 			}
 			if containerState.attached {
-				appProfile.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
+				appProfile.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
 			}
 			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
 			if err != nil {
@@ -408,7 +448,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			}
 		} else {
 			// if the application profile is final (immutable), we cannot patch it
-			if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+			if existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] == "true" {
 				// Remove this container from the filters of the event sink so that it does not collect events for it anymore
 				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 				// Stop tracing container
@@ -432,10 +472,10 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				log.Printf("error unmarshalling application profile: %s\n", err)
 			}
 
-			// If not attached (seen the container from the start) and partial annotation is set, remove it
-			if !containerState.attached && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
-				log.Printf("Removing partial annotation from application profile %s\n", appProfileName)
-				existingApplicationProfileObject.ObjectMeta.Annotations = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
+			// If not attached (seen the container from the start) and partial label is set, remove it
+			if !containerState.attached && existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/partial"] == "true" {
+				log.Printf("Removing partial label from application profile %s\n", appProfileName)
+				existingApplicationProfileObject.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
 			}
 
 			mergedAppProfile := cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile)
@@ -519,8 +559,7 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 			// Merge open events
 			filteredOpens := []OpenCalls{}
 			for _, open := range containerProfile.Opens {
-				hasSameFile, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens)
-				if len(existingContainer.Opens) < MaxOpenEvents && !(hasSameFile && hasSameFlags) {
+				if hasSamePath, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens); !(hasSamePath && hasSameFlags) {
 					filteredOpens = append(filteredOpens, open)
 				}
 			}
@@ -555,10 +594,10 @@ func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
 	cm.containersMutex.Lock()
 	if _, ok := cm.containers[*id]; ok {
 		cm.containersMutex.Unlock()
-		// Patch the application profile to make it immutable with the final annotation
+		// Patch the application profile to make it immutable with the final label
 		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
 		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
-			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"annotations\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), v1.PatchOptions{})
+			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), v1.PatchOptions{})
 		if err != nil {
 			log.Printf("error patching application profile: %s\n", err)
 		}
@@ -615,7 +654,7 @@ func (cm *CollectorManager) doesApplicationProfileExists(namespace string, podNa
 	}
 
 	// if the application profile is final (immutable), we cannot patch it
-	if checkFinal && existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] != "true" {
+	if checkFinal && existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] != "true" {
 		return false, nil
 	}
 
@@ -732,4 +771,55 @@ func openEventExists(openEvent *tracing.OpenEvent, openEvents []OpenCalls) (bool
 	}
 
 	return hasSamePath, hasSameFlags
+}
+
+func (cm *CollectorManager) shouldIncludeOpenEvent(openEvent *tracing.OpenEvent, openEvents []OpenCalls, mounts []string) bool {
+	// Check if we exceeded the maximum number of open events.
+	if len(openEvents) > MaxOpenEvents {
+		return false
+	}
+
+	// Check if we should ignore this path.
+	if len(cm.config.IgnorePrefixes) > 0 {
+		for _, prefix := range cm.config.IgnorePrefixes {
+			if strings.HasPrefix(openEvent.PathName, prefix) {
+				return false
+			}
+		}
+	}
+
+	// Check if event is already in the list.
+	hasSamePath, hasSameFlags := openEventExists(openEvent, openEvents)
+	if hasSamePath && hasSameFlags {
+		return false
+	}
+
+	// Check if we should ignore mounts.
+	if cm.config.IgnoreMounts {
+		for _, mount := range mounts {
+			if strings.HasPrefix(openEvent.PathName, mount) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (cm *CollectorManager) getPodMounts(podName, namespace string) ([]string, error) {
+	pod, err := cm.k8sClient.CoreV1().Pods(namespace).Get(context.Background(), podName, v1.GetOptions{})
+	if err != nil {
+		log.Printf("error getting pod: %s\n", err)
+		return nil, err
+	}
+
+	var mounts []string
+
+	for _, container := range pod.Spec.Containers {
+		for _, volumeMount := range container.VolumeMounts {
+			mounts = append(mounts, volumeMount.MountPath)
+		}
+	}
+
+	return mounts, nil
 }

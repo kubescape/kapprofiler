@@ -187,9 +187,9 @@ func (cm *CollectorManager) startFinalizationTimer(seconds uint64, pod *v1.Pod) 
 func (cm *CollectorManager) finalizePodProfile(pod *v1.Pod) {
 	// Generate pod application profile name
 	appProfileName := fmt.Sprintf("pod-%s", pod.GetName())
-	// Put annotation on pod application profile to mark it as finalized
+	// Put label on pod application profile to mark it as finalized
 	_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(pod.GetNamespace()).Patch(context.Background(),
-		appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"annotations\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), metav1.PatchOptions{})
+		appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), metav1.PatchOptions{})
 	if err != nil {
 		log.Printf("error patching application profile: %s\n", err)
 	}

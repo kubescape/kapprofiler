@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/cilium/ebpf/rlimit"
@@ -98,6 +99,14 @@ func main() {
 	tracer := tracing.NewTracer(NodeName, k8sConfig, []tracing.EventSink{eventSink}, false)
 
 	// Start the collector manager
+	ignoreMounts := false
+	if os.Getenv("OPEN_IGNORE_MOUNTS") == "true" {
+		ignoreMounts = true
+	}
+	ignorePrefixes := []string{}
+	if os.Getenv("OPEN_IGNORE_PREFIXES") != "" {
+		ignorePrefixes = strings.Split(os.Getenv("OPEN_IGNORE_PREFIXES"), ",")
+	}
 	collectorManagerConfig := &collector.CollectorManagerConfig{
 		EventSink:      eventSink,
 		Tracer:         tracer,
@@ -106,6 +115,8 @@ func main() {
 		K8sConfig:      k8sConfig,
 		RecordStrategy: collector.RecordStrategyOnlyIfNotExists,
 		NodeName:       NodeName,
+		IgnoreMounts:   ignoreMounts,
+		IgnorePrefixes: ignorePrefixes,
 	}
 	cm, err := collector.StartCollectorManager(collectorManagerConfig)
 	if err != nil {
