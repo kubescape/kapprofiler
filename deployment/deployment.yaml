@@ -71,6 +71,10 @@ spec:
                 fieldPath: metadata.name
           - name: HOST_ROOT
             value: "/host"
+          - name: OPEN_IGNORE_PREFIXES
+            value: "/proc,/tmp,/var/lib/elasticsearch"
+          - name: OPEN_IGNORE_MOUNTS
+            value: "false"
         securityContext:
           privileged: true
           capabilities:
