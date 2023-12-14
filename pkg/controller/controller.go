@@ -98,7 +98,7 @@ func (c *Controller) StopController() {
 
 func (c *Controller) handleApplicationProfile(applicationProfile *collector.ApplicationProfile) {
 	// If the application profile is marked as partial, do not propagate it
-	if applicationProfile.GetAnnotations()["kapprofiler.kubescape.io/partial"] == "true" {
+	if applicationProfile.GetLabels()["kapprofiler.kubescape.io/partial"] == "true" {
 		return
 	}
 
@@ -124,8 +124,8 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 						APIVersion: collector.ApplicationProfileApiVersion,
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:        profileName,
-						Annotations: applicationProfile.GetAnnotations(),
+						Name:   profileName,
+						Labels: applicationProfile.GetLabels(),
 					},
 					Spec: collector.ApplicationProfileSpec{
 						Containers: applicationProfile.Spec.Containers,
@@ -141,13 +141,13 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 				}
 			} else { // ApplicationProfile exists for deployment
 				// Check if the higher level application profile is marked as final (imutable)
-				if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+				if existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] == "true" {
 					// Don't update the application profile
 					return
 				}
 
 				deploymentApplicationProfile := &collector.ApplicationProfile{}
-				deploymentApplicationProfile.Annotations = applicationProfile.GetAnnotations()
+				deploymentApplicationProfile.Labels = applicationProfile.GetLabels()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
 				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
@@ -248,6 +248,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 			return
 		}
 
+		// TODO: Make this code more efficient and less repetitive.
 		for _, container := range podApplicationProfileObj.Spec.Containers {
 			// Merge containers
 			if mapContainer, exists := containersMap[container.Name]; exists {
@@ -269,6 +270,75 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 					}
 					if !contains {
 						mapContainer.Execs = append(mapContainer.Execs, exec)
+					}
+				}
+
+				// Merge Capabilities
+				for _, capability := range container.Capabilities {
+					contains := false
+					for _, mapCapability := range mapContainer.Capabilities {
+						if mapCapability.Equals(capability) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.Capabilities = append(mapContainer.Capabilities, capability)
+					}
+				}
+
+				// Merge Opens
+				for _, open := range container.Opens {
+					contains := false
+					for _, mapOpen := range mapContainer.Opens {
+						if mapOpen.Equals(open) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.Opens = append(mapContainer.Opens, open)
+					}
+				}
+
+				// Merge Dns
+				for _, dns := range container.Dns {
+					contains := false
+					for _, mapDns := range mapContainer.Dns {
+						if mapDns.Equals(dns) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.Dns = append(mapContainer.Dns, dns)
+					}
+				}
+
+				// Merge Network
+				for _, network := range container.NetworkActivity.Incoming {
+					contains := false
+					for _, mapNetwork := range mapContainer.NetworkActivity.Incoming {
+						if mapNetwork.Equals(network) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.NetworkActivity.Incoming = append(mapContainer.NetworkActivity.Incoming, network)
+					}
+				}
+
+				for _, network := range container.NetworkActivity.Outgoing {
+					contains := false
+					for _, mapNetwork := range mapContainer.NetworkActivity.Outgoing {
+						if mapNetwork.Equals(network) {
+							contains = true
+							break
+						}
+					}
+					if !contains {
+						mapContainer.NetworkActivity.Outgoing = append(mapContainer.NetworkActivity.Outgoing, network)
 					}
 				}
 
@@ -294,8 +364,8 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 				APIVersion: collector.ApplicationProfileApiVersion,
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:        applicationProfileNameForController,
-				Annotations: applicationProfile.GetAnnotations(),
+				Name:   applicationProfileNameForController,
+				Labels: applicationProfile.GetLabels(),
 			},
 			Spec: collector.ApplicationProfileSpec{
 				Containers: containers,
@@ -313,12 +383,12 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 		}
 	} else { // ApplicationProfile of controller exists so update it
 		// Check if the higher level application profile is marked as final (imutable)
-		if existingApplicationProfile.GetAnnotations()["kapprofiler.kubescape.io/final"] == "true" {
+		if existingApplicationProfile.GetLabels()["kapprofiler.kubescape.io/final"] == "true" {
 			// Don't update the application profile
 			return
 		}
 		controllerApplicationProfile := &collector.ApplicationProfile{}
-		controllerApplicationProfile.Annotations = applicationProfile.GetAnnotations()
+		controllerApplicationProfile.Labels = applicationProfile.GetLabels()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
 		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})
