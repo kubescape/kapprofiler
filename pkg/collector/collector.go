@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -332,9 +333,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 
 		// Add open events to container profile
 		for _, event := range totalEvents.OpenEvents {
-			hasSameFile, hasSameFlags := openEventExists(event, containerProfile.Opens)
-			// TODO: check if event is already in containerProfile.Opens & remove the 10000 limit.
-			if len(containerProfile.Opens) < MaxOpenEvents && !(hasSameFile && hasSameFlags) {
+			if cm.shouldIncludeOpenEvent(event, containerProfile.Opens) {
 				openEvent := OpenCalls{
 					Path:  event.PathName,
 					Flags: event.Flags,
@@ -519,8 +518,7 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 			// Merge open events
 			filteredOpens := []OpenCalls{}
 			for _, open := range containerProfile.Opens {
-				hasSameFile, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens)
-				if len(existingContainer.Opens) < MaxOpenEvents && !(hasSameFile && hasSameFlags) {
+				if cm.shouldIncludeOpenEvent(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens) {
 					filteredOpens = append(filteredOpens, open)
 				}
 			}
@@ -732,4 +730,61 @@ func openEventExists(openEvent *tracing.OpenEvent, openEvents []OpenCalls) (bool
 	}
 
 	return hasSamePath, hasSameFlags
+}
+
+func (cm *CollectorManager) shouldIncludeOpenEvent(openEvent *tracing.OpenEvent, openEvents []OpenCalls) bool {
+	// Check if we exceeded the maximum number of open events.
+	if len(openEvents) > MaxOpenEvents {
+		return false
+	}
+
+	// Check if we should ignore this path.
+	if os.Getenv("OPEN_IGNORE_PREFIXES") != "" {
+		for _, prefix := range strings.Split(os.Getenv("OPEN_IGNORE_PREFIXES"), ",") {
+			if strings.HasPrefix(openEvent.PathName, prefix) {
+				log.Printf("ignoring open event %s because it matches prefix %s\n", openEvent.PathName, prefix)
+				return false
+			}
+		}
+	}
+
+	// Check if event is already in the list.
+	hasSamePath, hasSameFlags := openEventExists(openEvent, openEvents)
+	if hasSamePath && hasSameFlags {
+		return false
+	}
+
+	// Check if we should ignore mounts.
+	if os.Getenv("OPEN_IGNORE_MOUNTS") == "true" {
+		mounts, err := cm.getPodMounts(openEvent.PodName, openEvent.Namespace)
+		if err != nil {
+			log.Printf("error getting pod mounts: %s\n", err)
+		}
+
+		for _, mount := range mounts {
+			if strings.HasPrefix(openEvent.PathName, mount) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (cm *CollectorManager) getPodMounts(podName, namespace string) ([]string, error) {
+	pod, err := cm.k8sClient.CoreV1().Pods(namespace).Get(context.Background(), podName, v1.GetOptions{})
+	if err != nil {
+		log.Printf("error getting pod: %s\n", err)
+		return nil, err
+	}
+
+	var mounts []string
+
+	for _, container := range pod.Spec.Containers {
+		for _, volumeMount := range container.VolumeMounts {
+			mounts = append(mounts, volumeMount.MountPath)
+		}
+	}
+
+	return mounts, nil
 }
