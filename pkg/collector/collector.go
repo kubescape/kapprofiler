@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -95,6 +94,10 @@ type CollectorManagerConfig struct {
 	RecordStrategy string
 	// Node name
 	NodeName string
+	// Should ignore mounts
+	IgnoreMounts bool
+	// Should ignore prefixes
+	IgnorePrefixes []string
 }
 
 type TotalEvents struct {
@@ -367,8 +370,11 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// Add open events to container profile
+		cm.podMountCacheMutex.Lock()
+		mounts := cm.podMountCache[fmt.Sprintf("%s-%s", id.PodName, id.Namespace)]
+		cm.podMountCacheMutex.Unlock()
 		for _, event := range totalEvents.OpenEvents {
-			if cm.shouldIncludeOpenEvent(event, containerProfile.Opens) {
+			if cm.shouldIncludeOpenEvent(event, containerProfile.Opens, mounts) {
 				openEvent := OpenCalls{
 					Path:  event.PathName,
 					Flags: event.Flags,
@@ -553,7 +559,7 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 			// Merge open events
 			filteredOpens := []OpenCalls{}
 			for _, open := range containerProfile.Opens {
-				if cm.shouldIncludeOpenEvent(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens) {
+				if hasSamePath, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens); !(hasSamePath && hasSameFlags) {
 					filteredOpens = append(filteredOpens, open)
 				}
 			}
@@ -767,17 +773,16 @@ func openEventExists(openEvent *tracing.OpenEvent, openEvents []OpenCalls) (bool
 	return hasSamePath, hasSameFlags
 }
 
-func (cm *CollectorManager) shouldIncludeOpenEvent(openEvent *tracing.OpenEvent, openEvents []OpenCalls) bool {
+func (cm *CollectorManager) shouldIncludeOpenEvent(openEvent *tracing.OpenEvent, openEvents []OpenCalls, mounts []string) bool {
 	// Check if we exceeded the maximum number of open events.
 	if len(openEvents) > MaxOpenEvents {
 		return false
 	}
 
 	// Check if we should ignore this path.
-	if os.Getenv("OPEN_IGNORE_PREFIXES") != "" {
-		for _, prefix := range strings.Split(os.Getenv("OPEN_IGNORE_PREFIXES"), ",") {
+	if len(cm.config.IgnorePrefixes) > 0 {
+		for _, prefix := range cm.config.IgnorePrefixes {
 			if strings.HasPrefix(openEvent.PathName, prefix) {
-				log.Printf("ignoring open event %s because it matches prefix %s\n", openEvent.PathName, prefix)
 				return false
 			}
 		}
@@ -790,10 +795,7 @@ func (cm *CollectorManager) shouldIncludeOpenEvent(openEvent *tracing.OpenEvent,
 	}
 
 	// Check if we should ignore mounts.
-	if os.Getenv("OPEN_IGNORE_MOUNTS") == "true" {
-		cm.podMountCacheMutex.Lock()
-		mounts := cm.podMountCache[fmt.Sprintf("%s-%s", openEvent.PodName, openEvent.Namespace)]
-		cm.podMountCacheMutex.Unlock()
+	if cm.config.IgnoreMounts {
 		for _, mount := range mounts {
 			if strings.HasPrefix(openEvent.PathName, mount) {
 				return false
