@@ -72,6 +72,12 @@ type CollectorManager struct {
 
 	// Mutex for pod finalizer state table
 	podFinalizerStateMutex *sync.Mutex
+
+	// Pod mount cache
+	podMountCache map[string][]string
+
+	// Mutex for pod mount cache
+	podMountCacheMutex *sync.Mutex
 }
 
 type CollectorManagerConfig struct {
@@ -117,13 +123,15 @@ func StartCollectorManager(config *CollectorManagerConfig) (*CollectorManager, e
 		return nil, err
 	}
 	cm := &CollectorManager{
-		containers:      make(map[ContainerId]*ContainerState),
-		containersMutex: &sync.Mutex{},
-		k8sClient:       client,
-		dynamicClient:   dynamicClient,
-		config:          *config,
-		eventSink:       config.EventSink,
-		tracer:          config.Tracer,
+		containers:         make(map[ContainerId]*ContainerState),
+		containersMutex:    &sync.Mutex{},
+		k8sClient:          client,
+		dynamicClient:      dynamicClient,
+		config:             *config,
+		eventSink:          config.EventSink,
+		tracer:             config.Tracer,
+		podMountCache:      make(map[string][]string),
+		podMountCacheMutex: &sync.Mutex{},
 	}
 
 	// Setup container events listener
@@ -172,6 +180,17 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 	})
 	cm.containersMutex.Unlock()
 
+	// Fetch mounts for pod
+	cm.podMountCacheMutex.Lock()
+	if _, ok := cm.podMountCache[id.PodName]; !ok {
+		mounts, err := cm.getPodMounts(id.PodName, id.Namespace)
+		if err != nil {
+			log.Printf("error getting pod mounts: %s\n", err)
+		}
+		cm.podMountCache[fmt.Sprintf("%s-%s", id.PodName, id.Namespace)] = mounts
+	}
+	cm.podMountCacheMutex.Unlock()
+
 	// Get all events for this container
 	err = cm.tracer.StartTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
 	if err != nil {
@@ -202,8 +221,24 @@ func (cm *CollectorManager) ContainerStopped(id *ContainerId) {
 
 		// Remove this container from the filters of the event sink so that it does not collect events for it anymore
 		cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
+
 		// Remove container from map
 		delete(cm.containers, *id)
+
+		// Remove pod mount cache if no containers are running in the pod.
+		podExists := false
+		for containerId := range cm.containers {
+			if containerId.PodName == id.PodName && containerId.Namespace == id.Namespace {
+				podExists = true
+				break
+			}
+		}
+
+		if !podExists {
+			cm.podMountCacheMutex.Lock()
+			delete(cm.podMountCache, fmt.Sprintf("%s-%s", id.PodName, id.Namespace))
+			cm.podMountCacheMutex.Unlock()
+		}
 	}
 
 	// Collect data from container events
@@ -756,11 +791,9 @@ func (cm *CollectorManager) shouldIncludeOpenEvent(openEvent *tracing.OpenEvent,
 
 	// Check if we should ignore mounts.
 	if os.Getenv("OPEN_IGNORE_MOUNTS") == "true" {
-		mounts, err := cm.getPodMounts(openEvent.PodName, openEvent.Namespace)
-		if err != nil {
-			log.Printf("error getting pod mounts: %s\n", err)
-		}
-
+		cm.podMountCacheMutex.Lock()
+		mounts := cm.podMountCache[fmt.Sprintf("%s-%s", openEvent.PodName, openEvent.Namespace)]
+		cm.podMountCacheMutex.Unlock()
 		for _, mount := range mounts {
 			if strings.HasPrefix(openEvent.PathName, mount) {
 				return false
