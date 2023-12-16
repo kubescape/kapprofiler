@@ -56,26 +56,30 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 
 	// List of current objects
 	resourceVersion := ""
-	listOptions.Watch = false
 
-	for _, ns := range namespaces.Items {
-		list, err := w.client.Resource(gvr).Namespace(ns.GetName()).List(context.Background(), listOptions)
-		if err != nil {
-			return err
-		}
-		for i, item := range list.Items {
-			if item.GetResourceVersion() > resourceVersion {
-				// Update the resourceVersion to the latest
-				resourceVersion = item.GetResourceVersion()
-				if w.preList {
-					notifyF.AddFunc(&item)
-				}
-				// Make sure the item is scraped by the GC
-				list.Items[i] = unstructured.Unstructured{}
+	if w.preList {
+		listOptions.Watch = false
+		for _, ns := range namespaces.Items {
+			list, err := w.client.Resource(gvr).Namespace(ns.GetName()).List(context.Background(), listOptions)
+			if err != nil {
+				return err
 			}
+			for i, item := range list.Items {
+				if item.GetResourceVersion() > resourceVersion {
+					// Update the resourceVersion to the latest
+					resourceVersion = item.GetResourceVersion()
+					if w.preList {
+						notifyF.AddFunc(&item)
+					}
+					// Make sure the item is scraped by the GC
+					list.Items[i] = unstructured.Unstructured{}
+				}
+			}
+			list.Items = nil
+			list = nil
 		}
-		list.Items = nil
-		list = nil
+	} else {
+		resourceVersion = "0"
 	}
 
 	// Start the watcher
