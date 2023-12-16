@@ -26,13 +26,14 @@ type WatcherInterface interface {
 }
 
 type Watcher struct {
+	preList bool
 	client  dynamic.Interface
 	watcher watch.Interface
 	running bool
 }
 
-func NewWatcher(k8sClient dynamic.Interface) WatcherInterface {
-	return &Watcher{client: k8sClient, watcher: nil}
+func NewWatcher(k8sClient dynamic.Interface, preList bool) WatcherInterface {
+	return &Watcher{client: k8sClient, watcher: nil, running: false, preList: preList}
 }
 
 func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionResource, listOptions metav1.ListOptions) error {
@@ -40,20 +41,44 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 		return fmt.Errorf("watcher already started")
 	}
 
-	// List of current objects
-	resourceVersion := ""
-	listOptions.Watch = false
-	list, err := w.client.Resource(gvr).Namespace("").List(context.Background(), listOptions)
+	// Get a list of current namespaces from the API server
+	nameSpaceGvr := schema.GroupVersionResource{
+		Group:    "", // The group is empty for core API groups
+		Version:  "v1",
+		Resource: "namespaces",
+	}
+
+	// List the namespaces
+	namespaces, err := w.client.Resource(nameSpaceGvr).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-	// Get the resourceVersion of the last object
-	for _, item := range list.Items {
-		if item.GetResourceVersion() > resourceVersion {
-			resourceVersion = item.GetResourceVersion()
+
+	// List of current objects
+	resourceVersion := ""
+	listOptions.Watch = false
+
+	for _, ns := range namespaces.Items {
+		list, err := w.client.Resource(gvr).Namespace(ns.GetName()).List(context.Background(), listOptions)
+		if err != nil {
+			return err
 		}
+		for i, item := range list.Items {
+			if item.GetResourceVersion() > resourceVersion {
+				// Update the resourceVersion to the latest
+				resourceVersion = item.GetResourceVersion()
+				if w.preList {
+					notifyF.AddFunc(&item)
+				}
+				// Make sure the item is scraped by the GC
+				list.Items[i] = unstructured.Unstructured{}
+			}
+		}
+		list.Items = nil
+		list = nil
 	}
 
+	// Start the watcher
 	listOptions.ResourceVersion = resourceVersion
 	watcher, err := w.client.Resource(gvr).Namespace("").Watch(context.Background(), listOptions)
 	if err != nil {
@@ -62,12 +87,6 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 	w.watcher = watcher
 	w.running = true
 	go func() {
-
-		// Send the current objects
-		for _, item := range list.Items {
-			notifyF.AddFunc(&item)
-		}
-
 		// Watch for events
 
 		for {
@@ -101,6 +120,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					resourceVersion = addedObject.GetResourceVersion()
 				}
 				notifyF.AddFunc(addedObject)
+				addedObject = nil // Make sure the item is scraped by the GC
 			case watch.Modified:
 				// Convert the object to unstructured
 				modifiedObject := event.Object.(*unstructured.Unstructured)
@@ -113,6 +133,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					resourceVersion = modifiedObject.GetResourceVersion()
 				}
 				notifyF.UpdateFunc(modifiedObject)
+				modifiedObject = nil // Make sure the item is scraped by the GC
 			case watch.Deleted:
 				// Convert the object to unstructured
 				deletedObject := event.Object.(*unstructured.Unstructured)
@@ -125,6 +146,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					resourceVersion = deletedObject.GetResourceVersion()
 				}
 				notifyF.DeleteFunc(deletedObject)
+				deletedObject = nil // Make sure the item is scraped by the GC
 			case watch.Error:
 				log.Printf("watcher error: %v", event.Object)
 			}
