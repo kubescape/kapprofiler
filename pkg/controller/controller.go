@@ -52,33 +52,21 @@ func NewController(config *rest.Config) *Controller {
 func (c *Controller) StartController() {
 
 	// Initialize the watcher
-	appProfileWatcher := watcher.NewWatcher(c.dynamicClient)
+	// TODO: due to memory constraints, we are not pre-listing the objects. This will be fixed in the future.
+	// this means that will not consolidate the application profiles of the pods that are already running and not changing
+	appProfileWatcher := watcher.NewWatcher(c.dynamicClient, false)
 
 	// Start the watcher
 	err := appProfileWatcher.Start(watcher.WatchNotifyFunctions{
 		AddFunc: func(obj *unstructured.Unstructured) {
-			applicationProfile, err := c.getApplicationProfileFromObj(obj)
-			if err != nil {
-				return
-			}
-
-			c.handleApplicationProfile(applicationProfile)
+			c.handleApplicationProfile(obj)
 		},
 		UpdateFunc: func(obj *unstructured.Unstructured) {
-			applicationProfile, err := c.getApplicationProfileFromObj(obj)
-			if err != nil {
-				return
-			}
+			c.handleApplicationProfile(obj)
 
-			c.handleApplicationProfile(applicationProfile)
 		},
 		DeleteFunc: func(obj *unstructured.Unstructured) {
-			applicationProfile, err := c.getApplicationProfileFromObj(obj)
-			if err != nil {
-				return
-			}
-
-			c.handleApplicationProfile(applicationProfile)
+			c.handleApplicationProfile(obj)
 		},
 	}, collector.AppProfileGvr, metav1.ListOptions{})
 
@@ -99,20 +87,19 @@ func (c *Controller) StopController() {
 	}
 }
 
-func (c *Controller) handleApplicationProfile(applicationProfile *collector.ApplicationProfile) {
+func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *unstructured.Unstructured) {
 	// If the application profile is marked as partial, do not propagate it
-	if applicationProfile.GetLabels()["kapprofiler.kubescape.io/partial"] == "true" {
+	if applicationProfileUnstructured.GetLabels()["kapprofiler.kubescape.io/partial"] == "true" {
 		return
 	}
 
 	// Get Object name from ApplicationProfile. Application profile name has the kind in as the the prefix like deployment-nginx
-	objectName := strings.Join(strings.Split(applicationProfile.ObjectMeta.Name, "-")[1:], "-")
-	//kind := strings.Split(applicationProfile.ObjectMeta.Name, "-")[0]
+	objectName := strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-")
 
 	// Get pod to which the ApplicationProfile belongs to
-	pod, err := c.staticClient.CoreV1().Pods(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), objectName, metav1.GetOptions{})
+	pod, err := c.staticClient.CoreV1().Pods(applicationProfileUnstructured.GetNamespace()).Get(context.TODO(), objectName, metav1.GetOptions{})
 	if err != nil { // Ensures that the ApplicationProfile belongs to a pod or a replicaset
-		replicaSet, err := c.staticClient.AppsV1().ReplicaSets(applicationProfile.ObjectMeta.Namespace).Get(context.TODO(), objectName, metav1.GetOptions{})
+		replicaSet, err := c.staticClient.AppsV1().ReplicaSets(applicationProfileUnstructured.GetNamespace()).Get(context.TODO(), objectName, metav1.GetOptions{})
 		if err != nil { // ApplicationProfile belongs to neither
 			return
 		}
@@ -121,6 +108,10 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 			profileName := fmt.Sprintf("deployment-%v", replicaSet.OwnerReferences[0].Name)
 			existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Get(context.TODO(), profileName, metav1.GetOptions{})
 			if err != nil { // ApplicationProfile doesn't exist for deployment
+				applicationProfile, err := getApplicationProfileFromUnstructured(applicationProfileUnstructured)
+				if err != nil {
+					return
+				}
 				deploymentApplicationProfile := &collector.ApplicationProfile{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       collector.ApplicationProfileKind,
@@ -128,7 +119,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 					},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:   profileName,
-						Labels: applicationProfile.GetLabels(),
+						Labels: applicationProfileUnstructured.GetLabels(),
 					},
 					Spec: collector.ApplicationProfileSpec{
 						Containers: applicationProfile.Spec.Containers,
@@ -149,6 +140,11 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 					return
 				}
 
+				applicationProfile, err := getApplicationProfileFromUnstructured(applicationProfileUnstructured)
+				if err != nil {
+					return
+				}
+
 				deploymentApplicationProfile := &collector.ApplicationProfile{}
 				deploymentApplicationProfile.Labels = applicationProfile.GetLabels()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
@@ -159,7 +155,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 				}
 			}
 		} else {
-			log.Printf("ApplicationProfile %v doesn't belong to a deployment", applicationProfile.ObjectMeta.Name)
+			log.Printf("ApplicationProfile %v doesn't belong to a deployment", applicationProfileUnstructured.GetName())
 			return
 		}
 	}
@@ -245,7 +241,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 			log.Printf("ApplicationProfile for pod %v doesn't exist", pod.GetName())
 			return
 		}
-		podApplicationProfileObj, err := c.getApplicationProfileFromObj(typedObj)
+		podApplicationProfileObj, err := getApplicationProfileFromUnstructured(typedObj)
 		if err != nil {
 			log.Printf("ApplicationProfile for pod %v doesn't exist", pod.GetName())
 			return
@@ -368,7 +364,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   applicationProfileNameForController,
-				Labels: applicationProfile.GetLabels(),
+				Labels: applicationProfileUnstructured.GetLabels(),
 			},
 			Spec: collector.ApplicationProfileSpec{
 				Containers: containers,
@@ -391,7 +387,7 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 			return
 		}
 		controllerApplicationProfile := &collector.ApplicationProfile{}
-		controllerApplicationProfile.Labels = applicationProfile.GetLabels()
+		controllerApplicationProfile.Labels = applicationProfileUnstructured.GetLabels()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
 		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})
@@ -403,17 +399,11 @@ func (c *Controller) handleApplicationProfile(applicationProfile *collector.Appl
 }
 
 // Helper function to convert interface to ApplicationProfile
-func (c *Controller) getApplicationProfileFromObj(obj interface{}) (*collector.ApplicationProfile, error) {
-	typedObj := obj.(*unstructured.Unstructured)
-	bytes, err := typedObj.MarshalJSON()
+func getApplicationProfileFromUnstructured(typedObj *unstructured.Unstructured) (*collector.ApplicationProfile, error) {
+	var applicationProfileObj collector.ApplicationProfile
+	err := runtime.DefaultUnstructuredConverter.FromUnstructured(typedObj.Object, &applicationProfileObj)
 	if err != nil {
 		return &collector.ApplicationProfile{}, err
 	}
-
-	var applicationProfileObj *collector.ApplicationProfile
-	err = json.Unmarshal(bytes, &applicationProfileObj)
-	if err != nil {
-		return applicationProfileObj, err
-	}
-	return applicationProfileObj, nil
+	return &applicationProfileObj, nil
 }
