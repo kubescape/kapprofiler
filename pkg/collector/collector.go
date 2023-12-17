@@ -478,7 +478,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				existingApplicationProfileObject.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "false"}
 			}
 
-			mergedAppProfile := cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile)
+			mergedAppProfile := cm.mergeApplicationProfiles(existingApplicationProfileObject, &containerProfile, id)
 			unstructuredAppProfile, err := runtime.DefaultUnstructuredConverter.ToUnstructured(mergedAppProfile)
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
@@ -501,7 +501,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 	}
 }
 
-func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile *ApplicationProfile, containerProfile *ContainerProfile) *ApplicationProfile {
+func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile *ApplicationProfile, containerProfile *ContainerProfile, containerId *ContainerId) *ApplicationProfile {
 	// Add container profile to the list of containers or merge it with the existing one.
 	for i, existingContainerProfile := range existingApplicationProfile.Spec.Containers {
 		if existingContainerProfile.Name == containerProfile.Name {
@@ -558,8 +558,11 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 
 			// Merge open events
 			filteredOpens := []OpenCalls{}
+			cm.podMountCacheMutex.Lock()
+			mounts := cm.podMountCache[fmt.Sprintf("%s-%s", containerId.PodName, containerId.Namespace)]
+			cm.podMountCacheMutex.Unlock()
 			for _, open := range containerProfile.Opens {
-				if hasSamePath, hasSameFlags := openEventExists(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens); !(hasSamePath && hasSameFlags) {
+				if cm.shouldIncludeOpenEvent(&tracing.OpenEvent{PathName: open.Path, Flags: open.Flags}, existingContainer.Opens, mounts) {
 					filteredOpens = append(filteredOpens, open)
 				}
 			}
