@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -99,7 +100,7 @@ func (cm *CollectorManager) handlePodAddEvent(obj interface{}) {
 		// Check if pod is ready
 		if podReady {
 			// Start finalization timer
-			cm.startFinalizationTimer(cm.config.FinalizeTime, pod)
+			cm.startFinalizationTimer(pod)
 		}
 	}
 
@@ -165,15 +166,16 @@ func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
 		}
 
 		// Timer is not running, add finalizer
-		podState.FinalizationTimer = cm.startFinalizationTimer(cm.config.FinalizeTime, newPod)
+		podState.FinalizationTimer = cm.startFinalizationTimer(newPod)
 	} else if !newPodReady && oldPodReady {
 		cm.stopTimer(&newPod.ObjectMeta)
 	}
 }
 
 // Timer function
-func (cm *CollectorManager) startFinalizationTimer(seconds uint64, pod *v1.Pod) *time.Timer {
-	finalizationTimer := time.NewTimer(time.Duration(seconds) * time.Second)
+func (cm *CollectorManager) startFinalizationTimer(pod *v1.Pod) *time.Timer {
+	jitter := time.Duration(rand.Intn(int(cm.config.FinalizeJitter))) * time.Second
+	finalizationTimer := time.NewTimer(time.Duration(cm.config.FinalizeTime+uint64(jitter)) * time.Second)
 
 	// This goroutine waits for the timer to finish.
 	go func() {
@@ -257,7 +259,7 @@ func (cm *CollectorManager) MarkPodRecording(pod, namespace string, attach bool)
 
 		if podReady {
 			// Start finalization timer
-			cm.startFinalizationTimer(cm.config.FinalizeTime, pod)
+			cm.startFinalizationTimer(pod)
 		}
 	}
 
