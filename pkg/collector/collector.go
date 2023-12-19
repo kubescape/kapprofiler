@@ -86,6 +86,8 @@ type CollectorManagerConfig struct {
 	Interval uint64
 	// Finalize application profiles time
 	FinalizeTime uint64
+	// Finalize jitter
+	FinalizeJitter uint64
 	// Kubernetes configuration
 	K8sConfig *rest.Config
 	// Tracer object
