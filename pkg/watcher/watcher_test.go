@@ -22,7 +22,7 @@ func TestWatcherBasic(t *testing.T) {
 	fakeclient := fake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{
 		gvr: "TestResourceList",
 	})
-	watcher := NewWatcher(fakeclient)
+	watcher := NewWatcher(fakeclient, false)
 
 	_, err := fakeclient.Resource(gvr).Create(context.Background(), testResource, metav1.CreateOptions{})
 	if err != nil {
