@@ -111,4 +111,6 @@ type EventSink interface {
 	SendDnsEvent(event *DnsEvent)
 	// SendNetworkEvent sends a Network event to the sink
 	SendNetworkEvent(event *NetworkEvent)
+	// ReportError reports an error to the sink
+	ReportError(eventType EventType, err error)
 }

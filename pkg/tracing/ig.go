@@ -1,6 +1,7 @@
 package tracing
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/cilium/ebpf"
@@ -206,6 +207,10 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendDnsEvent(dnsEvent)
 		}
+	} else if event.Type == eventtypes.ERR {
+		for _, eventSink := range t.eventSinks {
+			eventSink.ReportError(DnsEventType, fmt.Errorf("dns ebpf error: %s", event.Message))
+		}
 	}
 }
 
@@ -236,6 +241,10 @@ func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendNetworkEvent(networkEvent)
 		}
+	} else if event.Type == eventtypes.ERR {
+		for _, eventSink := range t.eventSinks {
+			eventSink.ReportError(NetworkEventType, fmt.Errorf("network ebpf error: %s", event.Message))
+		}
 	}
 }
 
@@ -262,6 +271,10 @@ func (t *Tracer) capabilitiesEventCallback(event *tracercapabilitiestype.Event) 
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendCapabilitiesEvent(capabilitiesEvent)
+		}
+	} else if event.Type == eventtypes.ERR {
+		for _, eventSink := range t.eventSinks {
+			eventSink.ReportError(CapabilitiesEventType, fmt.Errorf("capabilities ebpf error: %s", event.Message))
 		}
 	}
 }
@@ -292,6 +305,10 @@ func (t *Tracer) openEventCallback(event *traceropentype.Event) {
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendOpenEvent(openEvent)
 		}
+	} else if event.Type == eventtypes.ERR {
+		for _, eventSink := range t.eventSinks {
+			eventSink.ReportError(OpenEventType, fmt.Errorf("open ebpf error: %s", event.Message))
+		}
 	}
 }
 
@@ -321,6 +338,10 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendExecveEvent(execveEvent)
+		}
+	} else if event.Type == eventtypes.ERR {
+		for _, eventSink := range t.eventSinks {
+			eventSink.ReportError(ExecveEventType, fmt.Errorf("execve ebpf error: %s", event.Message))
 		}
 	}
 }
