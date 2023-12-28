@@ -2,6 +2,7 @@ package eventsink
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/kubescape/kapprofiler/pkg/inmemorymapdb"
 	"github.com/kubescape/kapprofiler/pkg/tracing"
@@ -278,6 +279,11 @@ func (es *EventSink) SendNetworkEvent(event *tracing.NetworkEvent) {
 			}
 		}
 	}
+}
+
+func (es *EventSink) ReportError(eventType tracing.EventType, err error) {
+	// There is not a lot we can do here
+	log.Printf("Error reported for event type %d: %s", eventType, err)
 }
 
 func (es *EventSink) Close() error {
