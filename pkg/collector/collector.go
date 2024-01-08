@@ -493,6 +493,28 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				v1.UpdateOptions{})
 			if err != nil {
 				log.Printf("error updating application profile: %s\n", err)
+
+				// Remove this container from the filters of the event sink so that it does not collect events for it anymore
+				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
+				// Stop tracing container
+				cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
+
+				// Mark stop recording
+				cm.MarkPodNotRecording(id.PodName, id.Namespace)
+
+				// Remove the container from the map
+				cm.containersMutex.Lock()
+				delete(cm.containers, *id)
+				cm.containersMutex.Unlock()
+
+				// Mark pod as failed recording
+				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+					appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/failed\":\"true\"}}}"), v1.PatchOptions{})
+				if err != nil {
+					log.Printf("error patching application profile: %s\n", err)
+				}
+
+				return
 			}
 		}
 
