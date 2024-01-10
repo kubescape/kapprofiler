@@ -435,6 +435,10 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			if containerState.attached {
 				appProfile.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
 			}
+			// Check if we have over the limit of open events, if so, mark as failed.
+			if len(containerProfile.Opens) >= MaxOpenEvents {
+				appProfile.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/failed": "true"}
+			}
 			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
@@ -465,6 +469,16 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				cm.containersMutex.Unlock()
 
 				return
+			}
+
+			// Check if we have over the limit of open events, if so, mark as failed.
+			if len(containerProfile.Opens) >= MaxOpenEvents {
+				// Mark as failed
+				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+					appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/failed\":\"true\"}}}"), v1.PatchOptions{})
+				if err != nil {
+					log.Printf("error patching application profile: %s\n", err)
+				}
 			}
 
 			// Add the container profile into the application profile. If the container profile already exists, it will be merged.
