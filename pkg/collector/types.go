@@ -130,15 +130,8 @@ func (a DnsCalls) Equals(b DnsCalls) bool {
 	if len(a.Addresses) != len(b.Addresses) {
 		return false
 	}
-	for _, addr := range a.Addresses {
-		found := false
-		for _, baddr := range b.Addresses {
-			if addr == baddr {
-				found = true
-				break
-			}
-		}
-		if !found {
+	for i, addr := range a.Addresses {
+		if addr != b.Addresses[i] {
 			return false
 		}
 	}
