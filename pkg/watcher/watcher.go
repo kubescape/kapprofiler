@@ -90,69 +90,84 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 	}
 	w.watcher = watcher
 	w.running = true
+
+	// Use a context to gracefully stop the goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
 		// Watch for events
+		defer func() {
+			// Ensure the watcher is closed when the goroutine exits
+			watcher.Stop()
+		}()
 
 		for {
-			event, ok := <-watcher.ResultChan()
-			if !ok {
-				if w.running {
-					// Need to restart the watcher: wait a bit and restart
-					time.Sleep(5 * time.Second)
-					listOptions.ResourceVersion = resourceVersion
-					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.Background(), listOptions)
-					if err != nil {
-						log.Printf("watcher restart error: %v", err)
+			select {
+			case event, ok := <-watcher.ResultChan():
+				if !ok {
+					if w.running {
+						// Need to restart the watcher: wait a bit and restart
+						time.Sleep(5 * time.Second)
+						listOptions.ResourceVersion = resourceVersion
+						newWatcher, err := w.client.Resource(gvr).Namespace("").Watch(context.Background(), listOptions)
+						if err != nil {
+							log.Printf("watcher restart error: %v", err)
+							return
+						}
+						w.watcher = newWatcher
+						// Restart the loop
+						continue
+					} else {
+						// Stop the watcher
+						return
 					}
-					// Restart the loop
-					continue
-				} else {
-					// Stop the watcher
-					return
 				}
-			}
-			switch event.Type {
-			case watch.Added:
-				// Convert the object to unstructured
-				addedObject := event.Object.(*unstructured.Unstructured)
-				if addedObject == nil {
-					log.Printf("watcher error: addedObject is nil")
-					continue
+
+				switch event.Type {
+				case watch.Added:
+					// Convert the object to unstructured
+					addedObject := event.Object.(*unstructured.Unstructured)
+					if addedObject == nil {
+						log.Printf("watcher error: addedObject is nil")
+						continue
+					}
+					// Update the resourceVersion
+					if addedObject.GetResourceVersion() > resourceVersion {
+						resourceVersion = addedObject.GetResourceVersion()
+					}
+					notifyF.AddFunc(addedObject)
+				case watch.Modified:
+					// Convert the object to unstructured
+					modifiedObject := event.Object.(*unstructured.Unstructured)
+					if modifiedObject == nil {
+						log.Printf("watcher error: modifiedObject is nil")
+						continue
+					}
+					// Update the resourceVersion
+					if modifiedObject.GetResourceVersion() > resourceVersion {
+						resourceVersion = modifiedObject.GetResourceVersion()
+					}
+					notifyF.UpdateFunc(modifiedObject)
+				case watch.Deleted:
+					// Convert the object to unstructured
+					deletedObject := event.Object.(*unstructured.Unstructured)
+					if deletedObject == nil {
+						log.Printf("watcher error: deletedObject is nil")
+						continue
+					}
+					// Update the resourceVersion
+					if deletedObject.GetResourceVersion() > resourceVersion {
+						resourceVersion = deletedObject.GetResourceVersion()
+					}
+					notifyF.DeleteFunc(deletedObject)
+				case watch.Error:
+					log.Printf("watcher error: %v", event.Object)
 				}
-				// Update the resourceVersion
-				if addedObject.GetResourceVersion() > resourceVersion {
-					resourceVersion = addedObject.GetResourceVersion()
-				}
-				notifyF.AddFunc(addedObject)
-				addedObject = nil // Make sure the item is scraped by the GC
-			case watch.Modified:
-				// Convert the object to unstructured
-				modifiedObject := event.Object.(*unstructured.Unstructured)
-				if modifiedObject == nil {
-					log.Printf("watcher error: modifiedObject is nil")
-					continue
-				}
-				// Update the resourceVersion
-				if modifiedObject.GetResourceVersion() > resourceVersion {
-					resourceVersion = modifiedObject.GetResourceVersion()
-				}
-				notifyF.UpdateFunc(modifiedObject)
-				modifiedObject = nil // Make sure the item is scraped by the GC
-			case watch.Deleted:
-				// Convert the object to unstructured
-				deletedObject := event.Object.(*unstructured.Unstructured)
-				if deletedObject == nil {
-					log.Printf("watcher error: deletedObject is nil")
-					continue
-				}
-				// Update the resourceVersion
-				if deletedObject.GetResourceVersion() > resourceVersion {
-					resourceVersion = deletedObject.GetResourceVersion()
-				}
-				notifyF.DeleteFunc(deletedObject)
-				deletedObject = nil // Make sure the item is scraped by the GC
-			case watch.Error:
-				log.Printf("watcher error: %v", event.Object)
+
+			case <-ctx.Done():
+				// Exit the goroutine when the context is canceled
+				return
 			}
 		}
 	}()

@@ -63,7 +63,6 @@ func (c *Controller) StartController() {
 		},
 		UpdateFunc: func(obj *unstructured.Unstructured) {
 			c.handleApplicationProfile(obj)
-
 		},
 		DeleteFunc: func(obj *unstructured.Unstructured) {
 			c.handleApplicationProfile(obj)
@@ -77,7 +76,6 @@ func (c *Controller) StartController() {
 
 	// Set the watcher
 	c.watcher = appProfileWatcher
-
 }
 
 // Stop the AppProfile controller
@@ -112,7 +110,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				if err != nil {
 					return
 				}
-				deploymentApplicationProfile := &collector.ApplicationProfile{
+				deploymentApplicationProfile := collector.ApplicationProfile{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       collector.ApplicationProfileKind,
 						APIVersion: collector.ApplicationProfileApiVersion,
@@ -125,7 +123,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 						Containers: applicationProfile.Spec.Containers,
 					},
 				}
-				deploymentApplicationProfileRaw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(deploymentApplicationProfile)
+				deploymentApplicationProfileRaw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&deploymentApplicationProfile)
 				if err != nil {
 					return
 				}
@@ -145,7 +143,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 					return
 				}
 
-				deploymentApplicationProfile := &collector.ApplicationProfile{}
+				deploymentApplicationProfile := collector.ApplicationProfile{}
 				deploymentApplicationProfile.Labels = applicationProfile.GetLabels()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
@@ -357,7 +355,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 	// Fetch ApplicationProfile of the controller
 	existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Get(context.TODO(), applicationProfileNameForController, metav1.GetOptions{})
 	if err != nil { // ApplicationProfile of controller doesn't exist so create a new one
-		controllerApplicationProfile := &collector.ApplicationProfile{
+		controllerApplicationProfile := collector.ApplicationProfile{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       collector.ApplicationProfileKind,
 				APIVersion: collector.ApplicationProfileApiVersion,
@@ -370,7 +368,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				Containers: containers,
 			},
 		}
-		controllerApplicationProfileRaw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(controllerApplicationProfile)
+		controllerApplicationProfileRaw, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&controllerApplicationProfile)
 		if err != nil {
 			log.Printf("Error converting ApplicationProfile of controller %v", err)
 			return
@@ -386,7 +384,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 			// Don't update the application profile
 			return
 		}
-		controllerApplicationProfile := &collector.ApplicationProfile{}
+		controllerApplicationProfile := collector.ApplicationProfile{}
 		controllerApplicationProfile.Labels = applicationProfileUnstructured.GetLabels()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
