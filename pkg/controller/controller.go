@@ -234,32 +234,32 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 	containersMap := make(map[string]collector.ContainerProfile)
 
 	// Merge all the container information of all the pods
-	for _, pod := range pods.Items {
-		appProfileNameForPod := fmt.Sprintf("pod-%s", pod.GetName())
-		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.GetNamespace()).Get(context.TODO(), appProfileNameForPod, metav1.GetOptions{})
+	for i := 0; i < len(pods.Items); i++ {
+		appProfileNameForPod := fmt.Sprintf("pod-%s", pods.Items[i].GetName())
+		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pods.Items[i].GetNamespace()).Get(context.TODO(), appProfileNameForPod, metav1.GetOptions{})
 		if err != nil {
-			log.Printf("ApplicationProfile for pod %v doesn't exist", pod.GetName())
+			log.Printf("ApplicationProfile for pod %v doesn't exist", pods.Items[i].GetName())
 			return
 		}
 		podApplicationProfileObj, err := getApplicationProfileFromUnstructured(typedObj)
 		if err != nil {
-			log.Printf("ApplicationProfile for pod %v doesn't exist", pod.GetName())
+			log.Printf("ApplicationProfile for pod %v doesn't exist", pods.Items[i].GetName())
 			return
 		}
 
 		// TODO: Make this code more efficient and less repetitive.
-		for _, container := range podApplicationProfileObj.Spec.Containers {
+		for containerIndex := 0; containerIndex < len(podApplicationProfileObj.Spec.Containers); containerIndex++ {
 			// Merge containers
-			if mapContainer, exists := containersMap[container.Name]; exists {
+			if mapContainer, exists := containersMap[podApplicationProfileObj.Spec.Containers[containerIndex].Name]; exists {
 				// Merge SysCalls
-				for _, sysCall := range container.SysCalls {
+				for _, sysCall := range podApplicationProfileObj.Spec.Containers[containerIndex].SysCalls {
 					if !slices.Contains(mapContainer.SysCalls, sysCall) {
 						mapContainer.SysCalls = append(mapContainer.SysCalls, sysCall)
 					}
 				}
 
 				// Merge Execs
-				for _, exec := range container.Execs {
+				for _, exec := range podApplicationProfileObj.Spec.Containers[containerIndex].Execs {
 					contains := false
 					for _, mapExec := range mapContainer.Execs {
 						if mapExec.Equals(exec) {
@@ -273,7 +273,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				}
 
 				// Merge Capabilities
-				for _, capability := range container.Capabilities {
+				for _, capability := range podApplicationProfileObj.Spec.Containers[containerIndex].Capabilities {
 					contains := false
 					for _, mapCapability := range mapContainer.Capabilities {
 						if mapCapability.Equals(capability) {
@@ -287,7 +287,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				}
 
 				// Merge Opens
-				for _, open := range container.Opens {
+				for _, open := range podApplicationProfileObj.Spec.Containers[containerIndex].Opens {
 					contains := false
 					for _, mapOpen := range mapContainer.Opens {
 						if mapOpen.Equals(open) {
@@ -301,7 +301,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				}
 
 				// Merge Dns
-				for _, dns := range container.Dns {
+				for _, dns := range podApplicationProfileObj.Spec.Containers[containerIndex].Dns {
 					contains := false
 					for _, mapDns := range mapContainer.Dns {
 						if mapDns.Equals(dns) {
@@ -315,7 +315,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				}
 
 				// Merge Network
-				for _, network := range container.NetworkActivity.Incoming {
+				for _, network := range podApplicationProfileObj.Spec.Containers[containerIndex].NetworkActivity.Incoming {
 					contains := false
 					for _, mapNetwork := range mapContainer.NetworkActivity.Incoming {
 						if mapNetwork.Equals(network) {
@@ -328,7 +328,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 					}
 				}
 
-				for _, network := range container.NetworkActivity.Outgoing {
+				for _, network := range podApplicationProfileObj.Spec.Containers[containerIndex].NetworkActivity.Outgoing {
 					contains := false
 					for _, mapNetwork := range mapContainer.NetworkActivity.Outgoing {
 						if mapNetwork.Equals(network) {
@@ -341,9 +341,9 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 					}
 				}
 
-				containersMap[container.Name] = mapContainer
+				containersMap[podApplicationProfileObj.Spec.Containers[containerIndex].Name] = mapContainer
 			} else {
-				containersMap[container.Name] = container
+				containersMap[podApplicationProfileObj.Spec.Containers[containerIndex].Name] = podApplicationProfileObj.Spec.Containers[containerIndex]
 			}
 		}
 	}
