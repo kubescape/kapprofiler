@@ -248,7 +248,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 		}
 
 		// TODO: Make this code more efficient and less repetitive.
-		for containerIndex := 0; containerIndex < len(podApplicationProfileObj.Spec.Containers); i++ {
+		for containerIndex := 0; containerIndex < len(podApplicationProfileObj.Spec.Containers); containerIndex++ {
 			// Merge containers
 			if mapContainer, exists := containersMap[podApplicationProfileObj.Spec.Containers[containerIndex].Name]; exists {
 				// Merge SysCalls
