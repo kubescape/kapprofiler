@@ -8,14 +8,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kubescape/kapprofiler/pkg/watcher"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	apitypes "k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/dynamic/dynamicinformer"
-	"k8s.io/client-go/tools/cache"
 )
 
 type PodProfileFinalizerState struct {
@@ -35,32 +34,57 @@ func (cm *CollectorManager) StartFinalizerWatcher() {
 	// Initialize map
 	cm.podFinalizerState = make(map[string]*PodProfileFinalizerState)
 
-	// Initialize factory and informer
-	factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(cm.dynamicClient, 0, metav1.NamespaceAll, func(lo *metav1.ListOptions) {
-		lo.FieldSelector = "spec.nodeName=" + cm.config.NodeName
-	})
-	// Informer for Pods
-	informer := factory.ForResource(schema.GroupVersionResource{
+	// Initialize watcher
+	podFinalizerWatcher := watcher.NewWatcher(cm.dynamicClient, false)
+
+	// Start watcher
+	err := podFinalizerWatcher.Start(watcher.WatchNotifyFunctions{
+		AddFunc: func(obj *unstructured.Unstructured) {
+			cm.handlePodAddEvent(obj)
+		},
+		UpdateFunc: func(obj *unstructured.Unstructured) {
+			cm.handlePodUpdateEvent(obj)
+		},
+		DeleteFunc: func(obj *unstructured.Unstructured) {
+			cm.handlePodDeleteEvent(obj)
+		},
+	}, schema.GroupVersionResource{
 		Group:    "",
 		Version:  "v1",
 		Resource: "pods",
-	}).Informer()
+	}, metav1.ListOptions{})
 
-	// Add event handlers to informer
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
-			cm.handlePodAddEvent(obj)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			cm.handlePodUpdateEvent(oldObj, newObj)
-		},
-		DeleteFunc: func(obj interface{}) {
-			cm.handlePodDeleteEvent(obj)
-		},
-	})
+	if err != nil {
+		log.Printf("Error starting watcher: %v", err)
+		return
+	}
 
-	// Run the informer
-	go informer.Run(cm.podFinalizerControl)
+	// Initialize factory and informer
+	// factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(cm.dynamicClient, 0, metav1.NamespaceAll, func(lo *metav1.ListOptions) {
+	// 	lo.FieldSelector = "spec.nodeName=" + cm.config.NodeName
+	// })
+	// // Informer for Pods
+	// informer := factory.ForResource(schema.GroupVersionResource{
+	// 	Group:    "",
+	// 	Version:  "v1",
+	// 	Resource: "pods",
+	// }).Informer()
+
+	// // Add event handlers to informer
+	// informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	AddFunc: func(obj interface{}) {
+	// 		cm.handlePodAddEvent(obj)
+	// 	},
+	// 	UpdateFunc: func(oldObj, newObj interface{}) {
+	// 		cm.handlePodUpdateEvent(oldObj, newObj)
+	// 	},
+	// 	DeleteFunc: func(obj interface{}) {
+	// 		cm.handlePodDeleteEvent(obj)
+	// 	},
+	// })
+
+	// // Run the informer
+	// go informer.Run(cm.podFinalizerControl)
 }
 
 func generateTableKey(obj metav1.Object) string {
@@ -106,16 +130,9 @@ func (cm *CollectorManager) handlePodAddEvent(obj interface{}) {
 
 }
 
-func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
-	// Need to access the status of the old and new pod to check if the pod became ready
-
+func (cm *CollectorManager) handlePodUpdateEvent(obj interface{}) {
 	// Convert interface to Pod object
-	oldPod, err := ConvertInterfaceToPod(oldObj)
-	if err != nil {
-		log.Printf("the interface is not a Pod %v", err)
-		return
-	}
-	newPod, err := ConvertInterfaceToPod(newObj)
+	pod, err := ConvertInterfaceToPod(obj)
 	if err != nil {
 		log.Printf("the interface is not a Pod %v", err)
 		return
@@ -123,7 +140,7 @@ func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
 
 	// Check if recoding
 	cm.podFinalizerStateMutex.Lock()
-	finalizerState, ok := cm.podFinalizerState[generateTableKey(oldPod)]
+	finalizerState, ok := cm.podFinalizerState[generateTableKey(&pod.ObjectMeta)]
 	if !ok || !finalizerState.Recording {
 		// Discard
 		cm.podFinalizerStateMutex.Unlock()
@@ -131,31 +148,24 @@ func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
 	}
 	cm.podFinalizerStateMutex.Unlock()
 
-	// Check old pod status
-	oldPodReady := false
-	for _, condition := range oldPod.Status.Conditions {
+	// Check pod status
+	podReady := false
+	for _, condition := range pod.Status.Conditions {
 		if condition.Type == v1.PodReady && condition.Status == v1.ConditionTrue {
-			oldPodReady = true
+			podReady = true
 		}
 	}
 
-	newPodReady := false
-	for _, condition := range newPod.Status.Conditions {
-		if condition.Type == v1.PodReady && condition.Status == v1.ConditionTrue {
-			newPodReady = true
-		}
-	}
-
-	if newPodReady && !oldPodReady {
+	if podReady {
 		// Pod became ready, add finalizer
 		// Get mutex
 		cm.podFinalizerStateMutex.Lock()
 		defer cm.podFinalizerStateMutex.Unlock()
 
 		// Check if pod is in map
-		podState, ok := cm.podFinalizerState[generateTableKey(newPod)]
+		podState, ok := cm.podFinalizerState[generateTableKey(&pod.ObjectMeta)]
 		if !ok {
-			log.Printf("Pod %s in namespace %s not in finalizer map", newPod.GetName(), newPod.GetNamespace())
+			log.Printf("Pod %s in namespace %s not in finalizer map", pod.GetName(), pod.GetNamespace())
 			return
 		}
 
@@ -166,11 +176,77 @@ func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
 		}
 
 		// Timer is not running, add finalizer
-		podState.FinalizationTimer = cm.startFinalizationTimer(newPod)
-	} else if !newPodReady && oldPodReady {
-		cm.stopTimer(&newPod.ObjectMeta)
+		podState.FinalizationTimer = cm.startFinalizationTimer(pod)
+	} else {
+		cm.stopTimer(&pod.ObjectMeta)
 	}
 }
+
+// func (cm *CollectorManager) handlePodUpdateEvent(oldObj, newObj interface{}) {
+// 	// Need to access the status of the old and new pod to check if the pod became ready
+
+// 	// Convert interface to Pod object
+// 	oldPod, err := ConvertInterfaceToPod(oldObj)
+// 	if err != nil {
+// 		log.Printf("the interface is not a Pod %v", err)
+// 		return
+// 	}
+// 	newPod, err := ConvertInterfaceToPod(newObj)
+// 	if err != nil {
+// 		log.Printf("the interface is not a Pod %v", err)
+// 		return
+// 	}
+
+// 	// Check if recoding
+// 	cm.podFinalizerStateMutex.Lock()
+// 	finalizerState, ok := cm.podFinalizerState[generateTableKey(oldPod)]
+// 	if !ok || !finalizerState.Recording {
+// 		// Discard
+// 		cm.podFinalizerStateMutex.Unlock()
+// 		return
+// 	}
+// 	cm.podFinalizerStateMutex.Unlock()
+
+// 	// Check old pod status
+// 	oldPodReady := false
+// 	for _, condition := range oldPod.Status.Conditions {
+// 		if condition.Type == v1.PodReady && condition.Status == v1.ConditionTrue {
+// 			oldPodReady = true
+// 		}
+// 	}
+
+// 	newPodReady := false
+// 	for _, condition := range newPod.Status.Conditions {
+// 		if condition.Type == v1.PodReady && condition.Status == v1.ConditionTrue {
+// 			newPodReady = true
+// 		}
+// 	}
+
+// 	if newPodReady && !oldPodReady {
+// 		// Pod became ready, add finalizer
+// 		// Get mutex
+// 		cm.podFinalizerStateMutex.Lock()
+// 		defer cm.podFinalizerStateMutex.Unlock()
+
+// 		// Check if pod is in map
+// 		podState, ok := cm.podFinalizerState[generateTableKey(newPod)]
+// 		if !ok {
+// 			log.Printf("Pod %s in namespace %s not in finalizer map", newPod.GetName(), newPod.GetNamespace())
+// 			return
+// 		}
+
+// 		// Check if timer is running
+// 		if podState.FinalizationTimer != nil {
+// 			// Timer is running, no need to add finalizer
+// 			return
+// 		}
+
+// 		// Timer is not running, add finalizer
+// 		podState.FinalizationTimer = cm.startFinalizationTimer(newPod)
+// 	} else if !newPodReady && oldPodReady {
+// 		cm.stopTimer(&newPod.ObjectMeta)
+// 	}
+// }
 
 // Timer function
 func (cm *CollectorManager) startFinalizationTimer(pod *v1.Pod) *time.Timer {
