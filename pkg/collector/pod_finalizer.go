@@ -51,7 +51,9 @@ func (cm *CollectorManager) StartFinalizerWatcher() {
 		Group:    "",
 		Version:  "v1",
 		Resource: "pods",
-	}, metav1.ListOptions{})
+	}, metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("spec.nodeName=%s", cm.config.NodeName),
+	})
 
 	if err != nil {
 		log.Printf("Error starting watcher: %v", err)
@@ -82,10 +84,10 @@ func (cm *CollectorManager) handlePodAddEvent(obj interface{}) {
 	// Get mutex
 	cm.podFinalizerStateMutex.Lock()
 	// Get finalizer state
-	_, ok := cm.podFinalizerState[generateTableKey(&pod.ObjectMeta)]
+	_, ok := cm.podFinalizerState[generateTableKey(pod)]
 	if !ok {
 		// Add pod to map
-		cm.podFinalizerState[generateTableKey(&pod.ObjectMeta)] = &PodProfileFinalizerState{
+		cm.podFinalizerState[generateTableKey(pod)] = &PodProfileFinalizerState{
 			PodName:   pod.GetName(),
 			Namespace: pod.GetNamespace(),
 		}
@@ -110,7 +112,7 @@ func (cm *CollectorManager) handlePodUpdateEvent(obj interface{}) {
 
 	// Check if recoding
 	cm.podFinalizerStateMutex.Lock()
-	finalizerState, ok := cm.podFinalizerState[generateTableKey(&pod.ObjectMeta)]
+	finalizerState, ok := cm.podFinalizerState[generateTableKey(pod)]
 	if !ok || !finalizerState.Recording {
 		// Discard
 		cm.podFinalizerStateMutex.Unlock()
@@ -133,7 +135,7 @@ func (cm *CollectorManager) handlePodUpdateEvent(obj interface{}) {
 		defer cm.podFinalizerStateMutex.Unlock()
 
 		// Check if pod is in map
-		podState, ok := cm.podFinalizerState[generateTableKey(&pod.ObjectMeta)]
+		podState, ok := cm.podFinalizerState[generateTableKey(pod)]
 		if !ok {
 			log.Printf("Pod %s in namespace %s not in finalizer map", pod.GetName(), pod.GetNamespace())
 			return
