@@ -10,6 +10,7 @@ import (
 
 	"github.com/kubescape/kapprofiler/pkg/eventsink"
 	"github.com/kubescape/kapprofiler/pkg/tracing"
+	"github.com/kubescape/kapprofiler/pkg/watcher"
 
 	"golang.org/x/exp/slices"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,7 +65,7 @@ type CollectorManager struct {
 	config CollectorManagerConfig
 
 	// Pod finalizer watcher
-	podFinalizerControl chan struct{}
+	podFinalizerWatcher watcher.WatcherInterface
 
 	// Pod finalizer state table
 	podFinalizerState map[string]*PodProfileFinalizerState
