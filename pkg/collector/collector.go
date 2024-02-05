@@ -101,6 +101,8 @@ type CollectorManagerConfig struct {
 	IgnoreMounts bool
 	// Should ignore prefixes
 	IgnorePrefixes []string
+	// Should store profiles in the same namespace
+	StoreNamespace string
 }
 
 type TotalEvents struct {
@@ -163,7 +165,7 @@ func (cm *CollectorManager) ContainerStarted(id *ContainerId, attach bool) {
 	// Check if applicaton profile already exists
 	appProfileExists, err := cm.doesApplicationProfileExists(id.Namespace, id.PodName, true, true)
 	if err != nil {
-		//log.Printf("error checking if application profile exists: %s\n", err)
+		// log.Printf("error checking if application profile exists: %s\n", err)
 	} else if appProfileExists {
 		// If application profile exists, check if record strategy is RecordStrategyOnlyIfNotExists
 		if cm.config.RecordStrategy == RecordStrategyOnlyIfNotExists {
@@ -415,10 +417,14 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 		}
 
 		// The name of the ApplicationProfile you're looking for.
-		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
+		namespace := id.Namespace
+		appProfileName := cm.GetApplicationProfileName(id.Namespace, "pod", id.PodName)
+		if cm.config.StoreNamespace != "" {
+			namespace = cm.config.StoreNamespace
+		}
 
 		// Get the ApplicationProfile object with the name specified above.
-		existingApplicationProfile, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
+		existingApplicationProfile, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
 		if err != nil {
 			// it does not exist, create it
 			appProfile := &ApplicationProfile{
@@ -433,18 +439,23 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 					Containers: []ContainerProfile{containerProfile},
 				},
 			}
+			labels := map[string]string{}
 			if containerState.attached {
-				appProfile.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/partial": "true"}
+				labels["kapprofiler.kubescape.io/partial"] = "true"
 			}
 			// Check if we have over the limit of open events, if so, mark as failed.
 			if len(containerProfile.Opens) >= MaxOpenEvents {
-				appProfile.ObjectMeta.Labels = map[string]string{"kapprofiler.kubescape.io/failed": "true"}
+				labels["kapprofiler.kubescape.io/failed"] = "true"
 			}
+			if cm.config.StoreNamespace != "" {
+				labels["kapprofiler.kubescape.io/namespace"] = id.Namespace
+			}
+			appProfile.ObjectMeta.SetLabels(labels)
 			appProfileRawNew, err := runtime.DefaultUnstructuredConverter.ToUnstructured(appProfile)
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
 			}
-			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Create(
+			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Create(
 				context.Background(),
 				&unstructured.Unstructured{
 					Object: appProfileRawNew,
@@ -475,7 +486,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			// Check if we have over the limit of open events, if so, mark as failed.
 			if len(containerProfile.Opens) >= MaxOpenEvents {
 				// Mark as failed
-				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Patch(context.Background(),
 					appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/failed\":\"true\"}}}"), v1.PatchOptions{})
 				if err != nil {
 					log.Printf("error patching application profile: %s\n", err)
@@ -500,7 +511,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			if err != nil {
 				log.Printf("error converting application profile: %s\n", err)
 			}
-			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Update(
+			_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Update(
 				context.Background(),
 				&unstructured.Unstructured{
 					Object: unstructuredAppProfile,
@@ -513,7 +524,6 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				cm.eventSink.RemoveFilter(&eventsink.EventSinkFilter{EventType: tracing.AllEventType, ContainerID: id.ContainerID})
 				// Stop tracing container
 				cm.tracer.StopTraceContainer(id.NsMntId, id.Pid, tracing.AllEventType)
-
 				// Mark stop recording
 				cm.MarkPodNotRecording(id.PodName, id.Namespace)
 
@@ -523,7 +533,7 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 				cm.containersMutex.Unlock()
 
 				// Mark pod as failed recording
-				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+				_, err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Patch(context.Background(),
 					appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/failed\":\"true\"}}}"), v1.PatchOptions{})
 				if err != nil {
 					log.Printf("error patching application profile: %s\n", err)
@@ -637,8 +647,12 @@ func (cm *CollectorManager) FinalizeApplicationProfile(id *ContainerId) {
 	if _, ok := cm.containers[*id]; ok {
 		cm.containersMutex.Unlock()
 		// Patch the application profile to make it immutable with the final label
-		appProfileName := fmt.Sprintf("pod-%s", id.PodName)
-		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(id.Namespace).Patch(context.Background(),
+		namespace := id.Namespace
+		appProfileName := cm.GetApplicationProfileName(id.Namespace, "pod", id.PodName)
+		if cm.config.StoreNamespace != "" {
+			namespace = cm.config.StoreNamespace
+		}
+		_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Patch(context.Background(),
 			appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), v1.PatchOptions{})
 		if err != nil {
 			log.Printf("error patching application profile: %s\n", err)
@@ -687,7 +701,10 @@ func (cm *CollectorManager) doesApplicationProfileExists(namespace string, podNa
 	}
 
 	// The name of the ApplicationProfile you're looking for.
-	appProfileName := fmt.Sprintf("%s-%s", strings.ToLower(workloadKind), strings.ToLower(workloadName))
+	appProfileName := cm.GetApplicationProfileName(namespace, workloadKind, workloadName)
+	if cm.config.StoreNamespace != "" {
+		namespace = cm.config.StoreNamespace
+	}
 
 	// Get the ApplicationProfile object with the name specified above.
 	existingApplicationProfile, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Get(context.Background(), appProfileName, v1.GetOptions{})
@@ -864,4 +881,11 @@ func (cm *CollectorManager) getPodMounts(podName, namespace string) ([]string, e
 	}
 
 	return mounts, nil
+}
+
+func (cm *CollectorManager) GetApplicationProfileName(namespace, kind, name string) string {
+	if cm.config.StoreNamespace != "" {
+		return fmt.Sprintf("%s-%s-%s", strings.ToLower(kind), strings.ToLower(name), namespace)
+	}
+	return fmt.Sprintf("%s-%s", strings.ToLower(kind), strings.ToLower(name))
 }

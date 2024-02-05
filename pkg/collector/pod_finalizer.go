@@ -170,9 +170,13 @@ func (cm *CollectorManager) startFinalizationTimer(pod *v1.Pod) *time.Timer {
 
 func (cm *CollectorManager) finalizePodProfile(pod *v1.Pod) {
 	// Generate pod application profile name
-	appProfileName := fmt.Sprintf("pod-%s", pod.GetName())
+	namespace := pod.GetNamespace()
+	appProfileName := cm.GetApplicationProfileName(namespace, "pod", pod.GetName())
 	// Put label on pod application profile to mark it as finalized
-	_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(pod.GetNamespace()).Patch(context.Background(),
+	if cm.config.StoreNamespace != "" {
+		namespace = cm.config.StoreNamespace
+	}
+	_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Patch(context.Background(),
 		appProfileName, apitypes.MergePatchType, []byte("{\"metadata\":{\"labels\":{\"kapprofiler.kubescape.io/final\":\"true\"}}}"), metav1.PatchOptions{})
 	if err != nil {
 		log.Printf("error patching application profile: %s\n", err)
@@ -191,9 +195,13 @@ func (cm *CollectorManager) handlePodDeleteEvent(obj interface{}) {
 	cm.stopTimer(&pod.ObjectMeta)
 
 	// Generate pod application profile name
-	appProfileName := fmt.Sprintf("pod-%s", pod.Name)
+	appProfileName := cm.GetApplicationProfileName(pod.Namespace, "pod", pod.Name)
+	namespace := pod.Namespace
+	if cm.config.StoreNamespace != "" {
+		namespace = cm.config.StoreNamespace
+	}
 	// Delete pod application profile CRD
-	err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(pod.GetNamespace()).Delete(context.TODO(), appProfileName, metav1.DeleteOptions{})
+	err = cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Delete(context.TODO(), appProfileName, metav1.DeleteOptions{})
 	if err != nil {
 		log.Printf("Error deleting pod application profile: %v", err)
 		return

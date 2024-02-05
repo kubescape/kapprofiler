@@ -107,17 +107,22 @@ func main() {
 	if os.Getenv("OPEN_IGNORE_PREFIXES") != "" {
 		ignorePrefixes = strings.Split(os.Getenv("OPEN_IGNORE_PREFIXES"), ",")
 	}
+	storeNamespace := ""
+	if os.Getenv("STORE_NAMESPACE") != "" {
+		storeNamespace = os.Getenv("STORE_NAMESPACE")
+	}
 	collectorManagerConfig := &collector.CollectorManagerConfig{
 		EventSink:      eventSink,
 		Tracer:         tracer,
 		Interval:       60, // 60 seconds for now, TODO: make it configurable
-		FinalizeTime:   0,  // 0 seconds to disable finalization
-		FinalizeJitter: 0,  // 0 seconds to disable finalization jitter
+		FinalizeTime:   80, // 0 seconds to disable finalization
+		FinalizeJitter: 10, // 0 seconds to disable finalization jitter
 		K8sConfig:      k8sConfig,
 		RecordStrategy: collector.RecordStrategyOnlyIfNotExists,
 		NodeName:       NodeName,
 		IgnoreMounts:   ignoreMounts,
 		IgnorePrefixes: ignorePrefixes,
+		StoreNamespace: storeNamespace,
 	}
 	cm, err := collector.StartCollectorManager(collectorManagerConfig)
 	if err != nil {
@@ -132,7 +137,7 @@ func main() {
 	defer tracer.Stop()
 
 	// Start AppProfile controller
-	appProfileController := controller.NewController(k8sConfig)
+	appProfileController := controller.NewController(k8sConfig, storeNamespace)
 	appProfileController.StartController()
 	defer appProfileController.StopController()
 

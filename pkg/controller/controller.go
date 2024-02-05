@@ -26,25 +26,27 @@ import (
 
 // AppProfile controller struct
 type Controller struct {
-	config        *rest.Config
-	staticClient  *kubernetes.Clientset
-	dynamicClient *dynamic.DynamicClient
-	appProfileGvr schema.GroupVersionResource
-	watcher       watcher.WatcherInterface
+	config         *rest.Config
+	staticClient   *kubernetes.Clientset
+	dynamicClient  *dynamic.DynamicClient
+	appProfileGvr  schema.GroupVersionResource
+	watcher        watcher.WatcherInterface
+	storeNamespace string
 }
 
 // Create a new controller based on given config
-func NewController(config *rest.Config) *Controller {
+func NewController(config *rest.Config, storeNamespace string) *Controller {
 
 	// Initialize clients and channels
 	staticClient, _ := kubernetes.NewForConfig(config)
 	dynamicClient, _ := dynamic.NewForConfig(config)
 
 	return &Controller{
-		config:        config,
-		staticClient:  staticClient,
-		dynamicClient: dynamicClient,
-		appProfileGvr: collector.AppProfileGvr,
+		config:         config,
+		staticClient:   staticClient,
+		dynamicClient:  dynamicClient,
+		appProfileGvr:  collector.AppProfileGvr,
+		storeNamespace: storeNamespace,
 	}
 }
 
@@ -94,19 +96,34 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 	}
 
 	// Get Object name from ApplicationProfile. Application profile name has the kind in as the the prefix like deployment-nginx
-	objectName := strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-")
+	var objectName string
+	var namespace string
+	if c.storeNamespace == "" {
+		objectName = strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-")
+		namespace = applicationProfileUnstructured.GetNamespace()
+	} else {
+		namespace = applicationProfileUnstructured.GetLabels()["kapprofiler.kubescape.io/namespace"]
+		// Trim the namespace from the application profile name
+		objectName = strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-")
+		objectName = strings.TrimSuffix(objectName, fmt.Sprintf("-%s", namespace))
+	}
 
 	// Get pod to which the ApplicationProfile belongs to
-	pod, err := c.staticClient.CoreV1().Pods(applicationProfileUnstructured.GetNamespace()).Get(context.TODO(), objectName, metav1.GetOptions{})
+	pod, err := c.staticClient.CoreV1().Pods(namespace).Get(context.TODO(), objectName, metav1.GetOptions{})
 	if err != nil { // Ensures that the ApplicationProfile belongs to a pod or a replicaset
-		replicaSet, err := c.staticClient.AppsV1().ReplicaSets(applicationProfileUnstructured.GetNamespace()).Get(context.TODO(), objectName, metav1.GetOptions{})
+		replicaSet, err := c.staticClient.AppsV1().ReplicaSets(namespace).Get(context.TODO(), objectName, metav1.GetOptions{})
 		if err != nil { // ApplicationProfile belongs to neither
 			return
 		}
 
 		if len(replicaSet.OwnerReferences) > 0 && replicaSet.OwnerReferences[0].Kind == "Deployment" { // If owner of replicaset is a deployment
 			profileName := fmt.Sprintf("deployment-%v", replicaSet.OwnerReferences[0].Name)
-			existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Get(context.TODO(), profileName, metav1.GetOptions{})
+			replicaSetNamespace := replicaSet.GetNamespace()
+			if c.storeNamespace != "" {
+				profileName = fmt.Sprintf("%s-%s", profileName, replicaSet.Namespace)
+				replicaSetNamespace = c.storeNamespace
+			}
+			existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSetNamespace).Get(context.TODO(), profileName, metav1.GetOptions{})
 			if err != nil { // ApplicationProfile doesn't exist for deployment
 				applicationProfile, err := getApplicationProfileFromUnstructured(applicationProfileUnstructured)
 				if err != nil {
@@ -129,7 +146,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				if err != nil {
 					return
 				}
-				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Create(context.TODO(), &unstructured.Unstructured{Object: deploymentApplicationProfileRaw}, metav1.CreateOptions{})
+				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSetNamespace).Create(context.TODO(), &unstructured.Unstructured{Object: deploymentApplicationProfileRaw}, metav1.CreateOptions{})
 				if err != nil {
 					return
 				}
@@ -149,7 +166,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 				deploymentApplicationProfile.Labels = applicationProfile.GetLabels()
 				deploymentApplicationProfile.Spec.Containers = applicationProfile.Spec.Containers
 				deploymentApplicationProfileRaw, _ := json.Marshal(deploymentApplicationProfile)
-				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSet.Namespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
+				_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSetNamespace).Patch(context.TODO(), profileName, apitypes.MergePatchType, deploymentApplicationProfileRaw, metav1.PatchOptions{})
 				if err != nil {
 					return
 				}
@@ -236,7 +253,12 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 	// Merge all the container information of all the pods
 	for i := 0; i < len(pods.Items); i++ {
 		appProfileNameForPod := fmt.Sprintf("pod-%s", pods.Items[i].GetName())
-		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pods.Items[i].GetNamespace()).Get(context.TODO(), appProfileNameForPod, metav1.GetOptions{})
+		podNamespace := pods.Items[i].GetNamespace()
+		if c.storeNamespace != "" {
+			appProfileNameForPod = fmt.Sprintf("%s-%s", appProfileNameForPod, podNamespace)
+			podNamespace = c.storeNamespace
+		}
+		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(podNamespace).Get(context.TODO(), appProfileNameForPod, metav1.GetOptions{})
 		if err != nil {
 			log.Printf("ApplicationProfile for pod %v doesn't exist", pods.Items[i].GetName())
 			return
@@ -354,8 +376,13 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 	}
 
 	applicationProfileNameForController := fmt.Sprintf("%s-%s", podControllerKind, podControllerName)
+	controllerApplicationProfileNamespace := pod.Namespace
+	if c.storeNamespace != "" {
+		applicationProfileNameForController = fmt.Sprintf("%s-%s", applicationProfileNameForController, controllerApplicationProfileNamespace)
+		controllerApplicationProfileNamespace = c.storeNamespace
+	}
 	// Fetch ApplicationProfile of the controller
-	existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Get(context.TODO(), applicationProfileNameForController, metav1.GetOptions{})
+	existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(controllerApplicationProfileNamespace).Get(context.TODO(), applicationProfileNameForController, metav1.GetOptions{})
 	if err != nil { // ApplicationProfile of controller doesn't exist so create a new one
 		controllerApplicationProfile := &collector.ApplicationProfile{
 			TypeMeta: metav1.TypeMeta{
@@ -375,7 +402,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 			log.Printf("Error converting ApplicationProfile of controller %v", err)
 			return
 		}
-		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Create(context.TODO(), &unstructured.Unstructured{Object: controllerApplicationProfileRaw}, metav1.CreateOptions{})
+		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(controllerApplicationProfileNamespace).Create(context.TODO(), &unstructured.Unstructured{Object: controllerApplicationProfileRaw}, metav1.CreateOptions{})
 		if err != nil {
 			log.Printf("Error creating ApplicationProfile of controller %v", err)
 			return
@@ -390,7 +417,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 		controllerApplicationProfile.Labels = applicationProfileUnstructured.GetLabels()
 		controllerApplicationProfile.Spec.Containers = containers
 		controllerApplicationProfileRaw, _ := json.Marshal(controllerApplicationProfile)
-		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(pod.Namespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})
+		_, err = c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(controllerApplicationProfileNamespace).Patch(context.TODO(), applicationProfileNameForController, apitypes.MergePatchType, controllerApplicationProfileRaw, metav1.PatchOptions{})
 		if err != nil {
 			log.Printf("Error updating ApplicationProfile of controller %v", err)
 			return
