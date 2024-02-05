@@ -90,20 +90,27 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 	}
 	w.watcher = watcher
 	w.running = true
+	currentWatcherContext, cancelFunc := context.WithCancel(context.Background())
 	go func() {
 		// Watch for events
 
 		for {
 			event, ok := <-watcher.ResultChan()
 			if !ok {
+				if currentWatcherContext != nil && cancelFunc != nil {
+					cancelFunc()
+				}
+
 				if w.running {
 					// Need to restart the watcher: wait a bit and restart
 					time.Sleep(5 * time.Second)
 					listOptions.ResourceVersion = resourceVersion
-					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.Background(), listOptions)
+					currentWatcherContext, cancelFunc = context.WithCancel(context.Background())
+					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(currentWatcherContext, listOptions)
 					if err != nil {
 						log.Printf("watcher restart error: %v", err)
 					}
+					watcher = w.watcher
 					// Restart the loop
 					continue
 				} else {
