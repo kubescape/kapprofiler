@@ -1,0 +1,10 @@
+apiVersion: kubescape.io/v1
+kind: ApplicationProfile
+metadata:
+  name: pod-nginx
+  namespace: default
+spec:
+  containers:
+  - name: app
+    syscalls:
+    - open

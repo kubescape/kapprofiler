@@ -102,8 +102,10 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 		objectName = strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-")
 		namespace = applicationProfileUnstructured.GetNamespace()
 	} else {
-		objectName = strings.Split(strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-"), ".")[0]
-		namespace = strings.Join(strings.Split(applicationProfileUnstructured.GetName(), ".")[1:], "-")
+		namespace = applicationProfileUnstructured.GetLabels()["kapprofiler.kubescape.io/namespace"]
+		// Trim the namespace from the application profile name
+		objectName = strings.Join(strings.Split(applicationProfileUnstructured.GetName(), "-")[1:], "-")
+		objectName = strings.TrimSuffix(objectName, fmt.Sprintf("-%s", namespace))
 	}
 
 	// Get pod to which the ApplicationProfile belongs to
@@ -118,7 +120,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 			profileName := fmt.Sprintf("deployment-%v", replicaSet.OwnerReferences[0].Name)
 			replicaSetNamespace := replicaSet.GetNamespace()
 			if c.storeNamespace != "" {
-				profileName = fmt.Sprintf("%s.%s", profileName, replicaSet.Namespace)
+				profileName = fmt.Sprintf("%s-%s", profileName, replicaSet.Namespace)
 				replicaSetNamespace = c.storeNamespace
 			}
 			existingApplicationProfile, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(replicaSetNamespace).Get(context.TODO(), profileName, metav1.GetOptions{})
@@ -253,7 +255,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 		appProfileNameForPod := fmt.Sprintf("pod-%s", pods.Items[i].GetName())
 		podNamespace := pods.Items[i].GetNamespace()
 		if c.storeNamespace != "" {
-			appProfileNameForPod = fmt.Sprintf("%s.%s", appProfileNameForPod, podNamespace)
+			appProfileNameForPod = fmt.Sprintf("%s-%s", appProfileNameForPod, podNamespace)
 			podNamespace = c.storeNamespace
 		}
 		typedObj, err := c.dynamicClient.Resource(collector.AppProfileGvr).Namespace(podNamespace).Get(context.TODO(), appProfileNameForPod, metav1.GetOptions{})
@@ -376,7 +378,7 @@ func (c *Controller) handleApplicationProfile(applicationProfileUnstructured *un
 	applicationProfileNameForController := fmt.Sprintf("%s-%s", podControllerKind, podControllerName)
 	controllerApplicationProfileNamespace := pod.Namespace
 	if c.storeNamespace != "" {
-		applicationProfileNameForController = fmt.Sprintf("%s.%s", applicationProfileNameForController, controllerApplicationProfileNamespace)
+		applicationProfileNameForController = fmt.Sprintf("%s-%s", applicationProfileNameForController, controllerApplicationProfileNamespace)
 		controllerApplicationProfileNamespace = c.storeNamespace
 	}
 	// Fetch ApplicationProfile of the controller

@@ -170,11 +170,10 @@ func (cm *CollectorManager) startFinalizationTimer(pod *v1.Pod) *time.Timer {
 
 func (cm *CollectorManager) finalizePodProfile(pod *v1.Pod) {
 	// Generate pod application profile name
-	appProfileName := fmt.Sprintf("pod-%s", pod.GetName())
 	namespace := pod.GetNamespace()
+	appProfileName := cm.GetApplicationProfileName(namespace, "pod", pod.GetName())
 	// Put label on pod application profile to mark it as finalized
 	if cm.config.StoreNamespace != "" {
-		appProfileName = fmt.Sprintf("%s.%s", appProfileName, namespace)
 		namespace = cm.config.StoreNamespace
 	}
 	_, err := cm.dynamicClient.Resource(AppProfileGvr).Namespace(namespace).Patch(context.Background(),
@@ -196,10 +195,9 @@ func (cm *CollectorManager) handlePodDeleteEvent(obj interface{}) {
 	cm.stopTimer(&pod.ObjectMeta)
 
 	// Generate pod application profile name
-	appProfileName := fmt.Sprintf("pod-%s", pod.Name)
+	appProfileName := cm.GetApplicationProfileName(pod.Namespace, "pod", pod.Name)
 	namespace := pod.Namespace
 	if cm.config.StoreNamespace != "" {
-		appProfileName = fmt.Sprintf("%s.%s", appProfileName, namespace)
 		namespace = cm.config.StoreNamespace
 	}
 	// Delete pod application profile CRD
