@@ -66,7 +66,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 				return err
 			}
 			for i, item := range list.Items {
-				if w.isResourceVersionHigher(item.GetResourceVersion(), resourceVersion) {
+				if isResourceVersionHigher(item.GetResourceVersion(), resourceVersion) {
 					// Update the resourceVersion to the latest
 					resourceVersion = item.GetResourceVersion()
 					if w.preList {
@@ -128,7 +128,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if w.isResourceVersionHigher(addedObject.GetResourceVersion(), resourceVersion) {
+				if isResourceVersionHigher(addedObject.GetResourceVersion(), resourceVersion) {
 					resourceVersion = addedObject.GetResourceVersion()
 				}
 				notifyF.AddFunc(addedObject)
@@ -141,7 +141,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if w.isResourceVersionHigher(modifiedObject.GetResourceVersion(), resourceVersion) {
+				if isResourceVersionHigher(modifiedObject.GetResourceVersion(), resourceVersion) {
 					resourceVersion = modifiedObject.GetResourceVersion()
 				}
 				notifyF.UpdateFunc(modifiedObject)
@@ -154,7 +154,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if w.isResourceVersionHigher(deletedObject.GetResourceVersion(), resourceVersion) {
+				if isResourceVersionHigher(deletedObject.GetResourceVersion(), resourceVersion) {
 					resourceVersion = deletedObject.GetResourceVersion()
 				}
 				notifyF.DeleteFunc(deletedObject)
@@ -179,7 +179,7 @@ func (w *Watcher) Stop() {
 func (w *Watcher) Destroy() {
 }
 
-func (w *Watcher) isResourceVersionHigher(resourceVersion string, currentResourceVersion string) bool {
+func isResourceVersionHigher(resourceVersion string, currentResourceVersion string) bool {
 	// If the currentResourceVersion is empty, return true
 	if currentResourceVersion == "" {
 		return true

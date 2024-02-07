@@ -81,3 +81,64 @@ func TestWatcherBasic(t *testing.T) {
 		t.Errorf("DeleteFunc called %d times, expected 1", numberOfDeleteFuncCalls)
 	}
 }
+
+func TestIsResourceVersionHigher(t *testing.T) {
+	tests := []struct {
+		name                   string
+		resourceVersion        string
+		currentResourceVersion string
+		expectedResult         bool
+	}{
+		{
+			name:                   "Empty currentResourceVersion",
+			resourceVersion:        "123",
+			currentResourceVersion: "",
+			expectedResult:         true,
+		},
+		{
+			name:                   "Valid resourceVersion and currentResourceVersion",
+			resourceVersion:        "456",
+			currentResourceVersion: "123",
+			expectedResult:         true,
+		},
+		{
+			name:                   "Invalid resourceVersion",
+			resourceVersion:        "abc",
+			currentResourceVersion: "123",
+			expectedResult:         false,
+		},
+		{
+			name:                   "Invalid currentResourceVersion",
+			resourceVersion:        "456",
+			currentResourceVersion: "def",
+			expectedResult:         false,
+		},
+		{
+			name:                   "Equal resourceVersion and currentResourceVersion",
+			resourceVersion:        "456",
+			currentResourceVersion: "456",
+			expectedResult:         false,
+		},
+		{
+			name:                   "currentResourceVersion higher then resourceVersion",
+			resourceVersion:        "123",
+			currentResourceVersion: "456",
+			expectedResult:         false,
+		},
+		{
+			name:                   "Valid resourceVersion and currentResourceVersion high numbers",
+			resourceVersion:        "1234567892",
+			currentResourceVersion: "1234567891",
+			expectedResult:         true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := isResourceVersionHigher(test.resourceVersion, test.currentResourceVersion)
+			if result != test.expectedResult {
+				t.Errorf("Expected %v, but got %v", test.expectedResult, result)
+			}
+		})
+	}
+}
