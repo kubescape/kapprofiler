@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -65,7 +66,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 				return err
 			}
 			for i, item := range list.Items {
-				if item.GetResourceVersion() > resourceVersion {
+				if w.isResourceVersionHigher(item.GetResourceVersion(), resourceVersion) {
 					// Update the resourceVersion to the latest
 					resourceVersion = item.GetResourceVersion()
 					if w.preList {
@@ -127,7 +128,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if addedObject.GetResourceVersion() > resourceVersion {
+				if w.isResourceVersionHigher(addedObject.GetResourceVersion(), resourceVersion) {
 					resourceVersion = addedObject.GetResourceVersion()
 				}
 				notifyF.AddFunc(addedObject)
@@ -140,7 +141,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if modifiedObject.GetResourceVersion() > resourceVersion {
+				if w.isResourceVersionHigher(modifiedObject.GetResourceVersion(), resourceVersion) {
 					resourceVersion = modifiedObject.GetResourceVersion()
 				}
 				notifyF.UpdateFunc(modifiedObject)
@@ -153,7 +154,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if deletedObject.GetResourceVersion() > resourceVersion {
+				if w.isResourceVersionHigher(deletedObject.GetResourceVersion(), resourceVersion) {
 					resourceVersion = deletedObject.GetResourceVersion()
 				}
 				notifyF.DeleteFunc(deletedObject)
@@ -176,4 +177,25 @@ func (w *Watcher) Stop() {
 }
 
 func (w *Watcher) Destroy() {
+}
+
+func (w *Watcher) isResourceVersionHigher(resourceVersion string, currentResourceVersion string) bool {
+	// If the currentResourceVersion is empty, return true
+	if currentResourceVersion == "" {
+		return true
+	}
+
+	// Convert the resourceVersion to int64
+	resourceVersionInt, err := strconv.ParseInt(resourceVersion, 10, 64)
+	if err != nil {
+		return false
+	}
+
+	// Convert the currentResourceVersion to int64
+	currentResourceVersionInt, err := strconv.ParseInt(currentResourceVersion, 10, 64)
+	if err != nil {
+		return false
+	}
+
+	return resourceVersionInt > currentResourceVersionInt
 }
