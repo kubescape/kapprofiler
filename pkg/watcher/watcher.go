@@ -159,6 +159,17 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 				}
 				notifyF.DeleteFunc(deletedObject)
 				deletedObject = nil // Make sure the item is scraped by the GC
+
+			case watch.Bookmark:
+				// Update the resourceVersion
+				bookmarkObject := event.Object.(*unstructured.Unstructured)
+				if bookmarkObject == nil {
+					log.Printf("watcher error: bookmarkObject is nil")
+					continue
+				}
+				resourceVersion = bookmarkObject.GetResourceVersion()
+				bookmarkObject = nil // Make sure the item is scraped by the GC
+
 			case watch.Error:
 				log.Printf("watcher error: %v", event.Object)
 			}
