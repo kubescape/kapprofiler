@@ -171,7 +171,27 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 				bookmarkObject = nil // Make sure the item is scraped by the GC
 
 			case watch.Error:
-				log.Printf("watcher error: %v", event.Object)
+				if currentWatcherContext != nil && cancelFunc != nil {
+					cancelFunc()
+				}
+				// Convert the object to metav1.Status
+				watchError := event.Object.(*metav1.Status)
+				// Check if the object reason is "Expired" or "Gone" and restart the watcher
+				if watchError.Reason == "Expired" || watchError.Reason == "Gone" || watchError.Code == 410 {
+					// Need to restart the watcher: wait a bit and restart
+					time.Sleep(5 * time.Second)
+					listOptions.ResourceVersion = resourceVersion
+					currentWatcherContext, cancelFunc = context.WithCancel(context.Background())
+					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(currentWatcherContext, listOptions)
+					if err != nil {
+						log.Printf("watcher restart error: %v", err)
+					}
+					watcher = w.watcher
+					// Restart the loop
+					continue
+				} else {
+					log.Printf("watcher error: %v", event.Object)
+				}
 			}
 		}
 	}()
