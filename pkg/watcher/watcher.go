@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -92,27 +91,29 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 	w.watcher = watcher
 	w.running = true
 	currentWatcherContext, cancelFunc := context.WithCancel(context.Background())
+
+	// Function to restart the watcher
+	restartWatcher := func() {
+		if currentWatcherContext != nil && cancelFunc != nil {
+			cancelFunc()
+		}
+		listOptions.ResourceVersion = resourceVersion
+		currentWatcherContext, cancelFunc = context.WithCancel(context.Background())
+		w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(currentWatcherContext, listOptions)
+		if err != nil {
+			log.Printf("watcher restart error: %v, on object: %+v", err, gvr)
+		}
+		watcher = w.watcher
+	}
+
 	go func() {
 		// Watch for events
-
 		for {
 			event, ok := <-watcher.ResultChan()
 			if !ok {
-				if currentWatcherContext != nil && cancelFunc != nil {
-					cancelFunc()
-				}
-
 				if w.running {
-					// Need to restart the watcher: wait a bit and restart
-					time.Sleep(5 * time.Second)
-					listOptions.ResourceVersion = resourceVersion
-					currentWatcherContext, cancelFunc = context.WithCancel(context.Background())
-					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(currentWatcherContext, listOptions)
-					if err != nil {
-						log.Printf("watcher restart error: %v", err)
-					}
-					watcher = w.watcher
-					// Restart the loop
+					log.Printf("Watcher channel closed on object %+v", gvr)
+					restartWatcher()
 					continue
 				} else {
 					// Stop the watcher
@@ -128,9 +129,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if isResourceVersionHigher(addedObject.GetResourceVersion(), resourceVersion) {
-					resourceVersion = addedObject.GetResourceVersion()
-				}
+				resourceVersion = addedObject.GetResourceVersion()
 				notifyF.AddFunc(addedObject)
 				addedObject = nil // Make sure the item is scraped by the GC
 			case watch.Modified:
@@ -141,9 +140,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if isResourceVersionHigher(modifiedObject.GetResourceVersion(), resourceVersion) {
-					resourceVersion = modifiedObject.GetResourceVersion()
-				}
+				resourceVersion = modifiedObject.GetResourceVersion()
 				notifyF.UpdateFunc(modifiedObject)
 				modifiedObject = nil // Make sure the item is scraped by the GC
 			case watch.Deleted:
@@ -154,9 +151,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					continue
 				}
 				// Update the resourceVersion
-				if isResourceVersionHigher(deletedObject.GetResourceVersion(), resourceVersion) {
-					resourceVersion = deletedObject.GetResourceVersion()
-				}
+				resourceVersion = deletedObject.GetResourceVersion()
 				notifyF.DeleteFunc(deletedObject)
 				deletedObject = nil // Make sure the item is scraped by the GC
 
@@ -171,26 +166,14 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 				bookmarkObject = nil // Make sure the item is scraped by the GC
 
 			case watch.Error:
-				if currentWatcherContext != nil && cancelFunc != nil {
-					cancelFunc()
-				}
 				// Convert the object to metav1.Status
 				watchError := event.Object.(*metav1.Status)
 				// Check if the object reason is "Expired" or "Gone" and restart the watcher
 				if watchError.Reason == "Expired" || watchError.Reason == "Gone" || watchError.Code == 410 {
-					// Need to restart the watcher: wait a bit and restart
-					time.Sleep(5 * time.Second)
-					listOptions.ResourceVersion = resourceVersion
-					currentWatcherContext, cancelFunc = context.WithCancel(context.Background())
-					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(currentWatcherContext, listOptions)
-					if err != nil {
-						log.Printf("watcher restart error: %v", err)
-					}
-					watcher = w.watcher
-					// Restart the loop
+					restartWatcher()
 					continue
 				} else {
-					log.Printf("watcher error: %v", event.Object)
+					log.Printf("watcher error: %v, on object %+v", event.Object, gvr)
 				}
 			}
 		}
