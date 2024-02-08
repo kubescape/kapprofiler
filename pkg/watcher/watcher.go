@@ -13,6 +13,10 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
+type resourceVersionGetter interface {
+	GetResourceVersion() string
+}
+
 type WatchNotifyFunctions struct {
 	AddFunc    func(obj *unstructured.Unstructured)
 	UpdateFunc func(obj *unstructured.Unstructured)
@@ -26,14 +30,15 @@ type WatcherInterface interface {
 }
 
 type Watcher struct {
-	preList bool
-	client  dynamic.Interface
-	watcher watch.Interface
-	running bool
+	preList             bool
+	client              dynamic.Interface
+	watcher             watch.Interface
+	lastResourceVersion string
+	running             bool
 }
 
 func NewWatcher(k8sClient dynamic.Interface, preList bool) WatcherInterface {
-	return &Watcher{client: k8sClient, watcher: nil, running: false, preList: preList}
+	return &Watcher{client: k8sClient, watcher: nil, running: false, preList: preList, lastResourceVersion: ""}
 }
 
 func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionResource, listOptions metav1.ListOptions) error {
@@ -55,7 +60,7 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 	}
 
 	// List of current objects
-	resourceVersion := ""
+	w.lastResourceVersion = ""
 
 	if w.preList {
 		listOptions.Watch = false
@@ -65,9 +70,9 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 				return err
 			}
 			for i, item := range list.Items {
-				if isResourceVersionHigher(item.GetResourceVersion(), resourceVersion) {
+				if isResourceVersionHigher(item.GetResourceVersion(), w.lastResourceVersion) {
 					// Update the resourceVersion to the latest
-					resourceVersion = item.GetResourceVersion()
+					w.lastResourceVersion = item.GetResourceVersion()
 					if w.preList {
 						notifyF.AddFunc(&item)
 					}
@@ -78,48 +83,45 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 			list.Items = nil
 			list = nil
 		}
-	} else {
-		resourceVersion = "0"
 	}
 
 	// Start the watcher
-	listOptions.ResourceVersion = resourceVersion
-	watcher, err := w.client.Resource(gvr).Namespace("").Watch(context.Background(), listOptions)
+	listOptions.ResourceVersion = w.lastResourceVersion
+	listOptions.Watch = true
+	listOptions.AllowWatchBookmarks = true
+	w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.TODO(), listOptions)
 	if err != nil {
 		return err
 	}
-	w.watcher = watcher
 	w.running = true
-	currentWatcherContext, cancelFunc := context.WithCancel(context.Background())
-
-	// Function to restart the watcher
-	restartWatcher := func() {
-		if currentWatcherContext != nil && cancelFunc != nil {
-			cancelFunc()
-		}
-		listOptions.ResourceVersion = resourceVersion
-		currentWatcherContext, cancelFunc = context.WithCancel(context.Background())
-		w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(currentWatcherContext, listOptions)
-		if err != nil {
-			log.Printf("watcher restart error: %v, on object: %+v", err, gvr)
-		}
-		watcher = w.watcher
-	}
-
 	go func() {
 		// Watch for events
 		for {
-			event, ok := <-watcher.ResultChan()
+			event, ok := <-w.watcher.ResultChan()
 			if !ok {
 				if w.running {
-					log.Printf("Watcher channel closed on object %+v", gvr)
-					restartWatcher()
+					log.Printf("Restarting watcher on object %+v", gvr)
+					w.watcher.Stop()
+					w.watcher = nil
+					listOptions.ResourceVersion = w.lastResourceVersion
+					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.TODO(), listOptions)
+					if err != nil {
+						log.Printf("watcher restart error: %v, on object: %+v", err, gvr)
+					}
 					continue
 				} else {
 					// Stop the watcher
 					return
 				}
 			}
+
+			if metaObject, ok := event.Object.(resourceVersionGetter); ok {
+				// Update the resourceVersion to the latest
+				if metaObject.GetResourceVersion() != "" && isResourceVersionHigher(metaObject.GetResourceVersion(), w.lastResourceVersion) {
+					w.lastResourceVersion = metaObject.GetResourceVersion()
+				}
+			}
+
 			switch event.Type {
 			case watch.Added:
 				// Convert the object to unstructured
@@ -128,8 +130,6 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					log.Printf("watcher error: addedObject is nil")
 					continue
 				}
-				// Update the resourceVersion
-				resourceVersion = addedObject.GetResourceVersion()
 				notifyF.AddFunc(addedObject)
 				addedObject = nil // Make sure the item is scraped by the GC
 			case watch.Modified:
@@ -139,8 +139,6 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					log.Printf("watcher error: modifiedObject is nil")
 					continue
 				}
-				// Update the resourceVersion
-				resourceVersion = modifiedObject.GetResourceVersion()
 				notifyF.UpdateFunc(modifiedObject)
 				modifiedObject = nil // Make sure the item is scraped by the GC
 			case watch.Deleted:
@@ -150,31 +148,19 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					log.Printf("watcher error: deletedObject is nil")
 					continue
 				}
-				// Update the resourceVersion
-				resourceVersion = deletedObject.GetResourceVersion()
 				notifyF.DeleteFunc(deletedObject)
 				deletedObject = nil // Make sure the item is scraped by the GC
-
-			case watch.Bookmark:
-				// Update the resourceVersion
-				bookmarkObject := event.Object.(*unstructured.Unstructured)
-				if bookmarkObject == nil {
-					log.Printf("watcher error: bookmarkObject is nil")
-					continue
-				}
-				resourceVersion = bookmarkObject.GetResourceVersion()
-				bookmarkObject = nil // Make sure the item is scraped by the GC
-
 			case watch.Error:
 				// Convert the object to metav1.Status
 				watchError := event.Object.(*metav1.Status)
-				// Check if the object reason is "Expired" or "Gone" and restart the watcher
-				if watchError.Reason == "Expired" || watchError.Reason == "Gone" || watchError.Code == 410 {
-					restartWatcher()
-					continue
-				} else {
-					log.Printf("watcher error: %v, on object %+v", event.Object, gvr)
+				if watchError != nil {
+					if watchError.Code == 410 {
+						// If the resourceVersion is too old, reset the resourceVersion to the latest.
+						// https://kubernetes.io/docs/reference/using-api/api-concepts/#resource-versions
+						w.lastResourceVersion = ""
+					}
 				}
+				continue
 			}
 		}
 	}()
