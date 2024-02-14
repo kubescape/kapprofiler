@@ -253,7 +253,7 @@ func (t *Tracer) StartTraceContainer(mntns uint64, pid uint32, eventType EventTy
 	}
 	var eventTypesToStart []EventType
 	if eventType == AllEventType {
-		eventTypesToStart = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType}
+		eventTypesToStart = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType, RandomXEventType}
 	} else {
 		eventTypesToStart = append(eventTypesToStart, eventType)
 	}
@@ -286,7 +286,7 @@ func (t *Tracer) StopTraceContainer(mntns uint64, pid uint32, eventType EventTyp
 	defer t.tracingStateMutex.Unlock()
 	var eventTypesToStop []EventType
 	if eventType == AllEventType {
-		eventTypesToStop = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType}
+		eventTypesToStop = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType, RandomXEventType}
 	} else {
 		eventTypesToStop = append(eventTypesToStop, eventType)
 	}

@@ -3,6 +3,7 @@ package tracing
 import (
 	"fmt"
 	"log"
+	"runtime"
 
 	"github.com/cilium/ebpf"
 	tracerseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/advise/seccomp/tracer"
@@ -19,6 +20,8 @@ import (
 	tracercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/tracer-collection"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/utils/host"
+	tracerrandomx "github.com/kubescape/kapprofiler/pkg/ebpf/gadgets/randomx/tracer"
+	tracerrandomxtype "github.com/kubescape/kapprofiler/pkg/ebpf/gadgets/randomx/types"
 )
 
 // Global constants
@@ -27,6 +30,7 @@ const openTraceName = "trace_open"
 const capabilitiesTraceName = "trace_capabilities"
 const dnsTraceName = "trace_dns"
 const networkTraceName = "trace_network"
+const randomxTraceName = "trace_randomx"
 
 func createEbpfMountNsMap(tracerId string) (*ebpf.Map, error) {
 	mntnsSpec := &ebpf.MapSpec{
@@ -83,12 +87,45 @@ func (t *Tracer) startAppBehaviorTracing() error {
 		return err
 	}
 
+	// Start tracing randomx
+	if runtime.GOARCH == "amd64" {
+		err = t.startRandomxTracing()
+		if err != nil {
+			log.Printf("error starting randomx tracing: %s\n", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *Tracer) startRandomxTracing() error {
+	// Create nsmount map to filter by containers
+	randomxMountnsmap, err := createEbpfMountNsMap(randomxTraceName)
+	if err != nil {
+		log.Printf("error creating mountnsmap: %s\n", err)
+		return err
+	}
+
+	tracerRandomx, err := tracerrandomx.NewTracer(&tracerrandomx.Config{MountnsMap: randomxMountnsmap}, t.cCollection, t.randomxEventCallback)
+	if err != nil {
+		log.Printf("error creating tracer: %s\n", err)
+		return err
+	}
+
+	t.tracingStateMutex.Lock()
+	t.tracingState[RandomXEventType] = TracingState{
+		usageReferenceCount:    make(map[uint64]int),
+		eBpfContainerFilterMap: randomxMountnsmap,
+		gadget:                 tracerRandomx,
+		attachable:             nil,
+	}
+	t.tracingStateMutex.Unlock()
+
 	return nil
 }
 
 func (t *Tracer) startNetworkTracing() error {
-	//host.Init(host.Config{AutoMountFilesystems: true})
-
 	tracerNetwork, err := tracernetwork.NewTracer()
 	if err != nil {
 		log.Printf("error creating tracer: %s\n", err)
@@ -180,6 +217,37 @@ func (t *Tracer) startOpenTracing() error {
 	t.tracingStateMutex.Unlock()
 
 	return nil
+}
+
+func (t *Tracer) randomxEventCallback(event *tracerrandomxtype.Event) {
+	if event.Type == eventtypes.NORMAL {
+		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
+		randomxEvent := &RandomXEvent{
+			GeneralEvent: GeneralEvent{
+				ProcessDetails: ProcessDetails{
+					Pid:  event.Pid,
+					Ppid: event.PPid,
+					Uid:  event.Uid,
+					Gid:  event.Gid,
+					Comm: event.Comm,
+				},
+				ContainerName: event.K8s.ContainerName,
+				ContainerID:   event.Runtime.ContainerID,
+				PodName:       event.K8s.PodName,
+				Namespace:     event.K8s.Namespace,
+				MountNsID:     event.MountNsID,
+				Timestamp:     int64(event.Timestamp),
+				EventType:     RandomXEventType,
+			},
+		}
+		for _, eventSink := range t.eventSinks {
+			eventSink.SendRandomXEvent(randomxEvent)
+		}
+	} else if event.Type == eventtypes.ERR {
+		for _, eventSink := range t.eventSinks {
+			eventSink.ReportError(RandomXEventType, fmt.Errorf("randomx ebpf error: %s", event.Message))
+		}
+	}
 }
 
 func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
@@ -416,8 +484,21 @@ func (t *Tracer) stopAppBehaviorTracing() error {
 	if err = t.stopNetworkTracing(); err != nil {
 		log.Printf("error stopping network tracing: %s\n", err)
 	}
+	// Stop randomx tracer
+	if err = t.stopRandomxTracing(); err != nil {
+		log.Printf("error stopping randomx tracing: %s\n", err)
+	}
 
 	return err
+}
+
+func (t *Tracer) stopRandomxTracing() error {
+	t.tracingStateMutex.Lock()
+	defer t.tracingStateMutex.Unlock()
+	if t.tracingState[RandomXEventType].gadget != nil {
+		t.tracingState[RandomXEventType].gadget.Stop()
+	}
+	return nil
 }
 
 func (t *Tracer) stopExecTracing() error {
