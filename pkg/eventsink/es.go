@@ -58,9 +58,7 @@ func (es *EventSink) Start() error {
 	// Create the channel for the network events
 	es.networkEventChannel = make(chan *tracing.NetworkEvent, 10000)
 	es.networkEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.NetworkEvent](100)
-	// Create the channel for the randomx events
-	es.randomxEventChannel = make(chan *tracing.RandomXEvent, 10000)
-	es.randomxEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.RandomXEvent](100)
+
 	// Start the execve event worker
 	go es.execveEventWorker()
 
@@ -75,9 +73,6 @@ func (es *EventSink) Start() error {
 
 	// Start the network event worker
 	go es.networkEventWorker()
-
-	// Start the randomx event worker
-	go es.randomxEventWorker()
 
 	return nil
 }
@@ -122,15 +117,6 @@ func (es *EventSink) RemoveFilter(filter *EventSinkFilter) {
 			return
 		}
 	}
-}
-
-func (es *EventSink) randomxEventWorker() error {
-	for event := range es.randomxEventChannel {
-		bucket := fmt.Sprintf("randomx-%s-%s-%s", event.Namespace, event.PodName, event.ContainerName)
-		es.randomxEventDB.Put(bucket, event)
-	}
-
-	return nil
 }
 
 func (es *EventSink) networkEventWorker() error {
@@ -194,15 +180,7 @@ func (es *EventSink) CleanupContainer(namespace string, podName string, containe
 	bucket = fmt.Sprintf("network-%s-%s-%s", namespace, podName, containerID)
 	es.networkEventDB.Delete(bucket)
 
-	bucket = fmt.Sprintf("randomx-%s-%s-%s", namespace, podName, containerID)
-	es.randomxEventDB.Delete(bucket)
-
 	return nil
-}
-
-func (es *EventSink) GetRandomXEvents(namespace string, podName string, containerID string) ([]*tracing.RandomXEvent, error) {
-	bucket := fmt.Sprintf("randomx-%s-%s-%s", namespace, podName, containerID)
-	return es.randomxEventDB.GetNClean(bucket), nil
 }
 
 func (es *EventSink) GetNetworkEvents(namespace string, podName string, containerID string) ([]*tracing.NetworkEvent, error) {
@@ -325,7 +303,6 @@ func (es *EventSink) Close() error {
 	es.capabilitiesEventDB.Close()
 	es.dnsEventDB.Close()
 	es.networkEventDB.Close()
-	es.randomxEventDB.Close()
 
 	return nil
 }
