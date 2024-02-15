@@ -20,6 +20,17 @@ import (
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -no-global-types -target bpfel -cc clang -cflags "-g -O2" -type event randomx bpf/randomx.bpf.c -- -I./bpf/
 
+const (
+	TargetRandomxEventsCount = 50
+	MaxSecondsBetweenEvents  = 5
+)
+
+type randomxEventCache struct {
+	Timestamp   uint64
+	EventsCount uint64
+	Alerted     bool
+}
+
 type Config struct {
 	MountnsMap *ebpf.Map
 }
@@ -32,15 +43,17 @@ type Tracer struct {
 	objs                  randomxObjects
 	randomxDeactivateLink link.Link
 	reader                *perf.Reader
+	pidToEventCount       map[uint32]randomxEventCache
 }
 
 func NewTracer(config *Config, enricher gadgets.DataEnricherByMntNs,
 	eventCallback func(*types.Event),
 ) (*Tracer, error) {
 	t := &Tracer{
-		config:        config,
-		enricher:      enricher,
-		eventCallback: eventCallback,
+		config:          config,
+		enricher:        enricher,
+		eventCallback:   eventCallback,
+		pidToEventCount: make(map[uint32]randomxEventCache),
 	}
 
 	if err := t.install(); err != nil {
@@ -115,24 +128,60 @@ func (t *Tracer) run() {
 
 		bpfEvent := (*randomxEvent)(unsafe.Pointer(&record.RawSample[0]))
 
-		event := types.Event{
-			Event: eventtypes.Event{
-				Type:      eventtypes.NORMAL,
-				Timestamp: gadgets.WallTimeFromBootTime(bpfEvent.Timestamp),
-			},
-			WithMountNsID: eventtypes.WithMountNsID{MountNsID: bpfEvent.MntnsId},
-			Pid:           bpfEvent.Pid,
-			PPid:          bpfEvent.Ppid,
-			Uid:           bpfEvent.Uid,
-			Gid:           bpfEvent.Gid,
-			Comm:          gadgets.FromCString(bpfEvent.Comm[:]),
+		// Check if we have seen this pid before
+		if _, ok := t.pidToEventCount[bpfEvent.Pid]; !ok {
+			t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+				Timestamp:   bpfEvent.Timestamp,
+				EventsCount: 1,
+				Alerted:     false,
+			}
+		} else if !t.pidToEventCount[bpfEvent.Pid].Alerted {
+			// Check if the last event was too long ago
+			if bpfEvent.Timestamp-t.pidToEventCount[bpfEvent.Pid].Timestamp > MaxSecondsBetweenEvents*1e9 {
+				t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+					Timestamp:   bpfEvent.Timestamp,
+					EventsCount: 1,
+					Alerted:     false,
+				}
+			} else {
+				t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+					Timestamp:   bpfEvent.Timestamp,
+					EventsCount: t.pidToEventCount[bpfEvent.Pid].EventsCount + 1,
+					Alerted:     false,
+				}
+			}
+		} else {
+			// We have already alerted for this pid
+			continue
 		}
 
-		if t.enricher != nil {
-			t.enricher.EnrichByMntNs(&event.CommonData, event.MountNsID)
-		}
+		// Check if we have seen enough events for this pid
+		if t.pidToEventCount[bpfEvent.Pid].EventsCount > TargetRandomxEventsCount && !t.pidToEventCount[bpfEvent.Pid].Alerted {
+			event := types.Event{
+				Event: eventtypes.Event{
+					Type:      eventtypes.NORMAL,
+					Timestamp: gadgets.WallTimeFromBootTime(bpfEvent.Timestamp),
+				},
+				WithMountNsID: eventtypes.WithMountNsID{MountNsID: bpfEvent.MntnsId},
+				Pid:           bpfEvent.Pid,
+				PPid:          bpfEvent.Ppid,
+				Uid:           bpfEvent.Uid,
+				Gid:           bpfEvent.Gid,
+				Comm:          gadgets.FromCString(bpfEvent.Comm[:]),
+			}
 
-		t.eventCallback(&event)
+			if t.enricher != nil {
+				t.enricher.EnrichByMntNs(&event.CommonData, event.MountNsID)
+			}
+
+			t.eventCallback(&event)
+
+			t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+				Timestamp:   bpfEvent.Timestamp,
+				EventsCount: t.pidToEventCount[bpfEvent.Pid].EventsCount,
+				Alerted:     true,
+			}
+		}
 	}
 }
 
