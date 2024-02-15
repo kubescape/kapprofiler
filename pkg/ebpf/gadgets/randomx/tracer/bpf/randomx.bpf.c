@@ -18,12 +18,26 @@ struct {
 // we need this to make sure the compiler doesn't remove our struct.
 const struct event *unusedevent __attribute__((unused));
 
+const volatile uid_t targ_uid = INVALID_UID;
+
+static __always_inline bool valid_uid(uid_t uid)
+{
+	return uid != INVALID_UID;
+}
+
 SEC("tracepoint/x86_fpu/x86_fpu_regs_deactivated")
 int tracepoint__x86_fpu_regs_deactivated(struct trace_event_raw_x86_fpu *ctx) {
     struct event event = {};
 
     struct task_struct *current_task = (struct task_struct*)bpf_get_current_task();
     if (!current_task) {
+        return 0;
+    }
+
+    u64 uid_gid = bpf_get_current_uid_gid();
+    u32 uid = (u32)uid_gid;
+
+    if (valid_uid(targ_uid) && targ_uid != uid) {
         return 0;
     }
 
@@ -38,13 +52,12 @@ int tracepoint__x86_fpu_regs_deactivated(struct trace_event_raw_x86_fpu *ctx) {
     int fpcr = (mxcsr & 0x6000) >> 13;
     if (fpcr != 0) {
         __u32 ppid = BPF_CORE_READ(current_task, real_parent, pid);
-        u64 uid_gid = bpf_get_current_uid_gid();
         /* event data */
         event.timestamp = bpf_ktime_get_boot_ns();
         event.mntns_id = mntns_id;
         event.pid = bpf_get_current_pid_tgid() >> 32;
         event.ppid = ppid;
-        event.uid = (u32)uid_gid;
+        event.uid = uid;
         event.gid = (u32)(uid_gid >> 32);
         bpf_get_current_comm(&event.comm, sizeof(event.comm));
         

@@ -43,17 +43,17 @@ type Tracer struct {
 	objs                  randomxObjects
 	randomxDeactivateLink link.Link
 	reader                *perf.Reader
-	pidToEventCount       map[uint32]randomxEventCache
+	mntnsToEventCount     map[uint64]randomxEventCache
 }
 
 func NewTracer(config *Config, enricher gadgets.DataEnricherByMntNs,
 	eventCallback func(*types.Event),
 ) (*Tracer, error) {
 	t := &Tracer{
-		config:          config,
-		enricher:        enricher,
-		eventCallback:   eventCallback,
-		pidToEventCount: make(map[uint32]randomxEventCache),
+		config:            config,
+		enricher:          enricher,
+		eventCallback:     eventCallback,
+		mntnsToEventCount: make(map[uint64]randomxEventCache),
 	}
 
 	if err := t.install(); err != nil {
@@ -129,24 +129,24 @@ func (t *Tracer) run() {
 		bpfEvent := (*randomxEvent)(unsafe.Pointer(&record.RawSample[0]))
 
 		// Check if we have seen this pid before
-		if _, ok := t.pidToEventCount[bpfEvent.Pid]; !ok {
-			t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+		if _, ok := t.mntnsToEventCount[bpfEvent.MntnsId]; !ok {
+			t.mntnsToEventCount[bpfEvent.MntnsId] = randomxEventCache{
 				Timestamp:   bpfEvent.Timestamp,
 				EventsCount: 1,
 				Alerted:     false,
 			}
-		} else if !t.pidToEventCount[bpfEvent.Pid].Alerted {
+		} else if !t.mntnsToEventCount[bpfEvent.MntnsId].Alerted {
 			// Check if the last event was too long ago
-			if bpfEvent.Timestamp-t.pidToEventCount[bpfEvent.Pid].Timestamp > MaxSecondsBetweenEvents*1e9 {
-				t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+			if bpfEvent.Timestamp-t.mntnsToEventCount[bpfEvent.MntnsId].Timestamp > MaxSecondsBetweenEvents*1e9 {
+				t.mntnsToEventCount[bpfEvent.MntnsId] = randomxEventCache{
 					Timestamp:   bpfEvent.Timestamp,
 					EventsCount: 1,
 					Alerted:     false,
 				}
 			} else {
-				t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+				t.mntnsToEventCount[bpfEvent.MntnsId] = randomxEventCache{
 					Timestamp:   bpfEvent.Timestamp,
-					EventsCount: t.pidToEventCount[bpfEvent.Pid].EventsCount + 1,
+					EventsCount: t.mntnsToEventCount[bpfEvent.MntnsId].EventsCount + 1,
 					Alerted:     false,
 				}
 			}
@@ -156,7 +156,7 @@ func (t *Tracer) run() {
 		}
 
 		// Check if we have seen enough events for this pid
-		if t.pidToEventCount[bpfEvent.Pid].EventsCount > TargetRandomxEventsCount && !t.pidToEventCount[bpfEvent.Pid].Alerted {
+		if t.mntnsToEventCount[bpfEvent.MntnsId].EventsCount > TargetRandomxEventsCount && !t.mntnsToEventCount[bpfEvent.MntnsId].Alerted {
 			event := types.Event{
 				Event: eventtypes.Event{
 					Type:      eventtypes.NORMAL,
@@ -176,11 +176,13 @@ func (t *Tracer) run() {
 
 			t.eventCallback(&event)
 
-			t.pidToEventCount[bpfEvent.Pid] = randomxEventCache{
+			t.mntnsToEventCount[bpfEvent.MntnsId] = randomxEventCache{
 				Timestamp:   bpfEvent.Timestamp,
-				EventsCount: t.pidToEventCount[bpfEvent.Pid].EventsCount,
+				EventsCount: t.mntnsToEventCount[bpfEvent.MntnsId].EventsCount,
 				Alerted:     true,
 			}
+
+			t.objs.randomxMaps.GadgetMntnsFilterMap.Put(&bpfEvent.MntnsId, 0)
 		}
 	}
 }
