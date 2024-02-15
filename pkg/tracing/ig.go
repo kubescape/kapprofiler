@@ -417,6 +417,10 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 func (t *Tracer) startExecTracing() error {
 	// Create nsmount map to filter by containers
 	execMountnsmap, err := createEbpfMountNsMap(execTraceName)
+	if err != nil {
+		log.Printf("error creating mountnsmap: %s\n", err)
+		return err
+	}
 
 	// Create the exec tracer
 	tracerExec, err := tracerexec.NewTracer(&tracerexec.Config{MountnsMap: execMountnsmap}, t.cCollection, t.execEventCallback)
