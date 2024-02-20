@@ -286,7 +286,7 @@ func (t *Tracer) StopTraceContainer(mntns uint64, pid uint32, eventType EventTyp
 	defer t.tracingStateMutex.Unlock()
 	var eventTypesToStop []EventType
 	if eventType == AllEventType {
-		eventTypesToStop = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType, RandomXEventType}
+		eventTypesToStop = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType}
 	} else {
 		eventTypesToStop = append(eventTypesToStop, eventType)
 	}
