@@ -99,6 +99,17 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 	go func() {
 		// Watch for events
 		for {
+			if w.watcher == nil {
+				w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.TODO(), listOptions)
+				if err != nil {
+					if notifyF.OnError != nil {
+						notifyF.OnError(err)
+					} else {
+						log.Printf("watcher error: %v", err)
+					}
+					return
+				}
+			}
 			event, ok := <-w.watcher.ResultChan()
 			if !ok {
 				if w.running {
