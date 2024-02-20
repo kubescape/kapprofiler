@@ -22,6 +22,7 @@ type WatchNotifyFunctions struct {
 	AddFunc    func(obj *unstructured.Unstructured)
 	UpdateFunc func(obj *unstructured.Unstructured)
 	DeleteFunc func(obj *unstructured.Unstructured)
+	OnError    func(err error)
 }
 
 type WatcherInterface interface {
@@ -116,8 +117,14 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					}
 
 					if err != nil {
-						// If the watcher restart failed after 5 attempts, exit so the pod can be restarted.
-						log.Fatalf("watcher restart failed after 5 attempts: %v", err)
+						// If the watcher restart fails after 5 attempts, log the error and call the OnError function.
+						if notifyF.OnError != nil {
+							notifyF.OnError(err)
+						} else {
+							log.Printf("Final watcher restart error: %v, on object: %+v", err, gvr)
+							log.Println("Closing watcher")
+						}
+						return
 					}
 					continue
 				} else {

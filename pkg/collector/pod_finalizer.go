@@ -47,6 +47,13 @@ func (cm *CollectorManager) StartFinalizerWatcher() {
 		DeleteFunc: func(obj *unstructured.Unstructured) {
 			cm.handlePodDeleteEvent(obj)
 		},
+		OnError: func(err error) {
+			if cm.config.OnError != nil {
+				cm.config.OnError(err)
+			} else {
+				log.Printf("Error in pod finalizer watcher: %v", err)
+			}
+		},
 	}, schema.GroupVersionResource{
 		Group:    "",
 		Version:  "v1",

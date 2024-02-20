@@ -32,10 +32,11 @@ type Controller struct {
 	appProfileGvr  schema.GroupVersionResource
 	watcher        watcher.WatcherInterface
 	storeNamespace string
+	onError        func(err error)
 }
 
 // Create a new controller based on given config
-func NewController(config *rest.Config, storeNamespace string) *Controller {
+func NewController(config *rest.Config, storeNamespace string, onError func(error)) *Controller {
 
 	// Initialize clients and channels
 	staticClient, _ := kubernetes.NewForConfig(config)
@@ -47,6 +48,7 @@ func NewController(config *rest.Config, storeNamespace string) *Controller {
 		dynamicClient:  dynamicClient,
 		appProfileGvr:  collector.AppProfileGvr,
 		storeNamespace: storeNamespace,
+		onError:        onError,
 	}
 }
 
@@ -69,6 +71,13 @@ func (c *Controller) StartController() {
 		},
 		DeleteFunc: func(obj *unstructured.Unstructured) {
 			c.handleApplicationProfile(obj)
+		},
+		OnError: func(err error) {
+			if c.onError != nil {
+				c.onError(err)
+			} else {
+				log.Printf("Error in AppProfile watcher: %v", err)
+			}
 		},
 	}, collector.AppProfileGvr, metav1.ListOptions{})
 
