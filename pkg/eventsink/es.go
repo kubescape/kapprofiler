@@ -26,9 +26,6 @@ type EventSink struct {
 	networkEventChannel chan *tracing.NetworkEvent
 	networkEventDB      *inmemorymapdb.InMemoryMapDB[*tracing.NetworkEvent]
 
-	randomxEventChannel chan *tracing.RandomXEvent
-	randomxEventDB      *inmemorymapdb.InMemoryMapDB[*tracing.RandomXEvent]
-
 	eventFilters []*EventSinkFilter
 }
 
@@ -92,9 +89,6 @@ func (es *EventSink) Stop() error {
 
 	// Close the channel for network events
 	close(es.networkEventChannel)
-
-	// Close the channel for randomx events
-	close(es.randomxEventChannel)
 
 	return nil
 }

@@ -253,7 +253,7 @@ func (t *Tracer) StartTraceContainer(mntns uint64, pid uint32, eventType EventTy
 	}
 	var eventTypesToStart []EventType
 	if eventType == AllEventType {
-		eventTypesToStart = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType, RandomXEventType}
+		eventTypesToStart = []EventType{NetworkEventType, DnsEventType, ExecveEventType, CapabilitiesEventType, OpenEventType}
 	} else {
 		eventTypesToStart = append(eventTypesToStart, eventType)
 	}

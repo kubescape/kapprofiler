@@ -128,7 +128,7 @@ func (t *Tracer) run() {
 
 		bpfEvent := (*randomxEvent)(unsafe.Pointer(&record.RawSample[0]))
 
-		// Check if we have seen this pid before
+		// Check if we have seen this mntns before
 		if _, ok := t.mntnsToEventCount[bpfEvent.MntnsId]; !ok {
 			t.mntnsToEventCount[bpfEvent.MntnsId] = randomxEventCache{
 				Timestamp:   bpfEvent.Timestamp,
@@ -151,11 +151,11 @@ func (t *Tracer) run() {
 				}
 			}
 		} else {
-			// We have already alerted for this pid
+			// We have already alerted for this mntns
 			continue
 		}
 
-		// Check if we have seen enough events for this pid
+		// Check if we have seen enough events for this mntns
 		if t.mntnsToEventCount[bpfEvent.MntnsId].EventsCount > TargetRandomxEventsCount && !t.mntnsToEventCount[bpfEvent.MntnsId].Alerted {
 			event := types.Event{
 				Event: eventtypes.Event{
@@ -182,6 +182,7 @@ func (t *Tracer) run() {
 				Alerted:     true,
 			}
 
+			// Once we have alerted, we don't need to keep track of this mntns anymore.
 			t.objs.randomxMaps.GadgetMntnsFilterMap.Put(&bpfEvent.MntnsId, 0)
 		}
 	}
