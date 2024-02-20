@@ -3,6 +3,7 @@ package tracing
 import (
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 
 	"github.com/cilium/ebpf"
@@ -88,7 +89,7 @@ func (t *Tracer) startAppBehaviorTracing() error {
 	}
 
 	// Start tracing randomx
-	if runtime.GOARCH == "amd64" {
+	if runtime.GOARCH == "amd64" && os.Getenv("KAPROFILER_ENABLE_RANDOMX") == "true" {
 		err = t.startRandomxTracing()
 		if err != nil {
 			log.Printf("error starting randomx tracing: %s\n", err)
