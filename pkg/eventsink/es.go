@@ -55,6 +55,7 @@ func (es *EventSink) Start() error {
 	// Create the channel for the network events
 	es.networkEventChannel = make(chan *tracing.NetworkEvent, 10000)
 	es.networkEventDB = inmemorymapdb.NewInMemoryMapDB[*tracing.NetworkEvent](100)
+
 	// Start the execve event worker
 	go es.execveEventWorker()
 
@@ -199,6 +200,10 @@ func (es *EventSink) GetExecveEvents(namespace string, podName string, container
 func (es *EventSink) GetOpenEvents(namespace string, podName string, containerID string) ([]*tracing.OpenEvent, error) {
 	bucket := fmt.Sprintf("open-%s-%s-%s", namespace, podName, containerID)
 	return es.openEventDB.GetNClean(bucket), nil
+}
+
+func (es *EventSink) SendRandomXEvent(event *tracing.RandomXEvent) {
+	// We don't process randomx events in kaprofiler
 }
 
 func (es *EventSink) SendExecveEvent(event *tracing.ExecveEvent) {

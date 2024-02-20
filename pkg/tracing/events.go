@@ -15,6 +15,7 @@ const (
 	DnsEventType
 	NetworkEventType
 	SyscallEventType
+	RandomXEventType
 	AllEventType
 )
 
@@ -100,6 +101,10 @@ type SyscallEvent struct {
 	Syscalls []string
 }
 
+type RandomXEvent struct {
+	GeneralEvent
+}
+
 type EventSink interface {
 	// SendExecveEvent sends an execve event to the sink
 	SendExecveEvent(event *ExecveEvent)
@@ -111,6 +116,8 @@ type EventSink interface {
 	SendDnsEvent(event *DnsEvent)
 	// SendNetworkEvent sends a Network event to the sink
 	SendNetworkEvent(event *NetworkEvent)
+	// SendRandomXEvent sends a RandomX event to the sink
+	SendRandomXEvent(event *RandomXEvent)
 	// ReportError reports an error to the sink
 	ReportError(eventType EventType, err error)
 }
