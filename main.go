@@ -123,6 +123,9 @@ func main() {
 		IgnoreMounts:   ignoreMounts,
 		IgnorePrefixes: ignorePrefixes,
 		StoreNamespace: storeNamespace,
+		OnError: func(err error) {
+			log.Fatalf("Error in collector manager watcher: %v", err)
+		},
 	}
 	cm, err := collector.StartCollectorManager(collectorManagerConfig)
 	if err != nil {
@@ -137,7 +140,9 @@ func main() {
 	defer tracer.Stop()
 
 	// Start AppProfile controller
-	appProfileController := controller.NewController(k8sConfig, storeNamespace)
+	appProfileController := controller.NewController(k8sConfig, storeNamespace, func(err error) {
+		log.Fatalf("AppProfile controller failed: %v\n", err)
+	})
 	appProfileController.StartController()
 	defer appProfileController.StopController()
 

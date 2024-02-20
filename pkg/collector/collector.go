@@ -103,6 +103,8 @@ type CollectorManagerConfig struct {
 	IgnorePrefixes []string
 	// Should store profiles in the same namespace
 	StoreNamespace string
+	// Handle errors from the watcher
+	OnError func(err error)
 }
 
 type TotalEvents struct {
