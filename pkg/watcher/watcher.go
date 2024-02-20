@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -104,9 +105,19 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					w.watcher.Stop()
 					w.watcher = nil
 					listOptions.ResourceVersion = w.lastResourceVersion
-					w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.TODO(), listOptions)
+					// Retry 5 times with exponential backoff.
+					for i := 0; i < 5; i++ {
+						w.watcher, err = w.client.Resource(gvr).Namespace("").Watch(context.TODO(), listOptions)
+						if err == nil {
+							break
+						}
+						log.Printf("watcher restart error: %v, on object: %+v, retrying...", err, gvr)
+						time.Sleep(time.Second * time.Duration(i*2)) // Exponential backoff
+					}
+
 					if err != nil {
-						log.Printf("watcher restart error: %v, on object: %+v", err, gvr)
+						log.Printf("watcher restart failed after 5 attempts, on object: %+v", gvr)
+						return
 					}
 					continue
 				} else {
