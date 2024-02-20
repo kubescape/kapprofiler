@@ -116,8 +116,8 @@ func (w *Watcher) Start(notifyF WatchNotifyFunctions, gvr schema.GroupVersionRes
 					}
 
 					if err != nil {
-						log.Printf("watcher restart failed after 5 attempts, on object: %+v", gvr)
-						return
+						// If the watcher restart failed after 5 attempts, exit so the pod can be restarted.
+						log.Fatalf("watcher restart failed after 5 attempts: %v", err)
 					}
 					continue
 				} else {
