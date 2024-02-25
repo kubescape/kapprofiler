@@ -18,7 +18,7 @@ import (
 	"github.com/kubescape/kapprofiler/pkg/ebpf/gadgets/randomx/types"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -no-global-types -target bpfel -cc clang -cflags "-g -O2" -type event randomx bpf/randomx.bpf.c -- -I./bpf/
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -no-global-types -target bpf -cc clang -cflags "-g -O2 -Wall" -type event randomx bpf/randomx.bpf.c -- -I./bpf/
 
 const (
 	TargetRandomxEventsCount = 50

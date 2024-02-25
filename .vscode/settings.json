@@ -5,6 +5,7 @@
         "mntns_filter.h": "c",
         "randomx.h": "c",
         "macros.h": "c",
-        "buffer.h": "c"
+        "buffer.h": "c",
+        "bpf_helpers.h": "c"
     }
 }
