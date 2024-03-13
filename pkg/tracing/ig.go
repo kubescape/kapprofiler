@@ -408,9 +408,10 @@ func (t *Tracer) execEventCallback(event *tracerexectype.Event) {
 				Timestamp:     int64(event.Timestamp),
 				EventType:     ExecveEventType,
 			},
-			PathName: event.Args[0],
-			Args:     event.Args[1:],
-			Env:      []string{},
+			PathName:   event.Args[0],
+			UpperLayer: event.UpperLayer,
+			Args:       event.Args[1:],
+			Env:        []string{},
 		}
 		for _, eventSink := range t.eventSinks {
 			eventSink.SendExecveEvent(execveEvent)

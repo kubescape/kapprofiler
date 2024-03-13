@@ -6,9 +6,10 @@ import (
 )
 
 type ExecCalls struct {
-	Path string   `json:"path" yaml:"path"`
-	Args []string `json:"args" yaml:"args"`
-	Envs []string `json:"envs" yaml:"envs"`
+	Path       string   `json:"path" yaml:"path"`
+	UpperLayer bool     `json:"upperLayer" yaml:"upperLayer"`
+	Args       []string `json:"args" yaml:"args"`
+	Envs       []string `json:"envs" yaml:"envs"`
 }
 
 type NetworkCalls struct {
