@@ -133,6 +133,12 @@ func (t *Tracer) startNetworkTracing() error {
 	}
 	tracerNetwork.SetEventHandler(t.networkEventCallback)
 
+	err = tracerNetwork.RunWorkaround()
+	if err != nil {
+		log.Printf("error running workaround: %s\n", err)
+		return err
+	}
+
 	t.tracingStateMutex.Lock()
 	t.tracingState[NetworkEventType] = TracingState{
 		usageReferenceCount:    make(map[uint64]int),
@@ -253,6 +259,7 @@ func (t *Tracer) randomxEventCallback(event *tracerrandomxtype.Event) {
 func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
+		t.cCollection.EnrichByNetNs(&event.CommonData, event.NetNsID)
 		dnsEvent := &DnsEvent{
 			GeneralEvent: GeneralEvent{
 				ProcessDetails: ProcessDetails{
@@ -285,6 +292,7 @@ func (t *Tracer) dnsEventCallback(event *tracerdnstype.Event) {
 func (t *Tracer) networkEventCallback(event *tracernetworktype.Event) {
 	if event.Type == eventtypes.NORMAL {
 		t.cCollection.EnrichByMntNs(&event.CommonData, event.MountNsID)
+		t.cCollection.EnrichByNetNs(&event.CommonData, event.NetNsID)
 		networkEvent := &NetworkEvent{
 			GeneralEvent: GeneralEvent{
 				ProcessDetails: ProcessDetails{
