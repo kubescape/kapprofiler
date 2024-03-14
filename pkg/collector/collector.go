@@ -338,9 +338,10 @@ func (cm *CollectorManager) CollectContainerEvents(id *ContainerId) {
 			// Check if execve event is already in container profile or if it has no path name (Some execve events do not have a path name).
 			if !execEventExists(event, containerProfile.Execs) || event.PathName == "" {
 				containerProfile.Execs = append(containerProfile.Execs, ExecCalls{
-					Path: event.PathName,
-					Args: event.Args,
-					Envs: event.Env,
+					Path:       event.PathName,
+					UpperLayer: event.UpperLayer,
+					Args:       event.Args,
+					Envs:       event.Env,
 				})
 			}
 		}
@@ -571,7 +572,7 @@ func (cm *CollectorManager) mergeApplicationProfiles(existingApplicationProfile 
 			// Merge execve events
 			filteredExecs := []ExecCalls{}
 			for _, exec := range containerProfile.Execs {
-				if !execEventExists(&tracing.ExecveEvent{PathName: exec.Path, Args: exec.Args, Env: exec.Envs}, existingContainer.Execs) {
+				if !execEventExists(&tracing.ExecveEvent{PathName: exec.Path, UpperLayer: exec.UpperLayer, Args: exec.Args, Env: exec.Envs}, existingContainer.Execs) {
 					filteredExecs = append(filteredExecs, exec)
 				}
 			}
@@ -768,7 +769,7 @@ func (cm *CollectorManager) OnContainerActivityEvent(event *tracing.ContainerAct
 
 func execEventExists(execEvent *tracing.ExecveEvent, execCalls []ExecCalls) bool {
 	for _, call := range execCalls {
-		if execEvent.PathName == call.Path && slices.Equal(execEvent.Args, call.Args) && slices.Equal(execEvent.Env, call.Envs) {
+		if execEvent.PathName == call.Path && slices.Equal(execEvent.Args, call.Args) && slices.Equal(execEvent.Env, call.Envs) && execEvent.UpperLayer == call.UpperLayer {
 			return true
 		}
 	}

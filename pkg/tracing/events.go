@@ -58,9 +58,10 @@ type GeneralEvent struct {
 type ExecveEvent struct {
 	GeneralEvent
 
-	PathName string
-	Args     []string
-	Env      []string
+	PathName   string
+	UpperLayer bool
+	Args       []string
+	Env        []string
 }
 
 type OpenEvent struct {
